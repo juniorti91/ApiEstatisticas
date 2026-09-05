@@ -3,6 +3,9 @@ import { ApiClient } from "../api/client";
 import Header from "../components/Header";
 import LiveMatchCard from "../components/LiveMatchCard";
 import DetailedStatsPanel from "../components/DetailedStatsPanel";
+import MainRecommendationCard from "../components/MainRecommendationCard";
+import OtherRecommendations from "../components/OtherRecommendations";
+import OddsMovementChart from "../components/OddsMovementChart";
 
 // Le do banco local via nosso backend - nao consome cota da API-Football.
 const POLL_MS = 15000;
@@ -23,6 +26,8 @@ export default function LiveMatches({ selectedLeague, onLeaguesChange, onOpenSid
   const [snapshots, setSnapshots] = useState([]);
   const [detailedStats, setDetailedStats] = useState(null);
   const [detailedLoading, setDetailedLoading] = useState(false);
+  const [recommendations, setRecommendations] = useState([]);
+  const [oddsHistory, setOddsHistory] = useState([]);
   const [lastUpdate, setLastUpdate] = useState(formatClock(new Date()));
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -79,6 +84,29 @@ export default function LiveMatches({ selectedLeague, onLeaguesChange, onOpenSid
     setSnapshots(Array.isArray(raw) ? raw : []);
   }, []);
 
+  // Recomendações e odds vem do banco local (sem custo de API aqui) e sao
+  // recalculadas no backend a cada 2 min pelo ciclo dedicado de odds (bem
+  // mais frequente que o ciclo completo de estatisticas, de 5 min) - por
+  // isso entram no MESMO polling rapido (POLL_MS) do resto da tela, para
+  // a odd exibida acompanhar de perto o que ja foi atualizado no backend.
+  const loadRecommendations = useCallback(async (matchId) => {
+    if (!matchId) {
+      setRecommendations([]);
+      setOddsHistory([]);
+      return;
+    }
+    const rawRecs = await ApiClient.listFixtureRecommendations(matchId).catch(() => []);
+    const recs = Array.isArray(rawRecs) ? rawRecs : [];
+    setRecommendations(recs);
+    const primary = recs.find((r) => r.is_primary) || recs[0];
+    if (primary) {
+      const rawHist = await ApiClient.getOddsHistory(primary.id).catch(() => []);
+      setOddsHistory(Array.isArray(rawHist) ? rawHist : []);
+    } else {
+      setOddsHistory([]);
+    }
+  }, []);
+
   const loadDetailedStats = useCallback(async (matchId) => {
     if (!matchId) {
       setDetailedStats(null);
@@ -102,12 +130,12 @@ export default function LiveMatches({ selectedLeague, onLeaguesChange, onOpenSid
       const matches = await loadLiveMatches();
       const currentId = selectedMatchIdRef.current;
       const targetId = matches.some((m) => m.id === currentId) ? currentId : matches[0]?.id ?? null;
-      await loadSnapshots(targetId);
+      await Promise.all([loadSnapshots(targetId), loadRecommendations(targetId)]);
       setLastUpdate(formatClock(new Date()));
     } catch {
       setLoadError("Não foi possível conectar ao backend. Verifique se o servidor FastAPI está rodando.");
     }
-  }, [loadLiveMatches, loadSnapshots]);
+  }, [loadLiveMatches, loadSnapshots, loadRecommendations]);
 
   useEffect(() => {
     loadAll();
@@ -118,15 +146,21 @@ export default function LiveMatches({ selectedLeague, onLeaguesChange, onOpenSid
 
   useEffect(() => {
     loadSnapshots(selectedMatchId);
+    loadRecommendations(selectedMatchId);
     loadDetailedStats(selectedMatchId);
     const interval = setInterval(() => loadDetailedStats(selectedMatchId), DETAILED_POLL_MS);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMatchId]);
 
+  // Mesmo comportamento do Dashboard: forca na hora o ciclo de
+  // odds/recomendacoes (sem gastar chamada de estatisticas de novo) antes
+  // de reler o banco, pra toda odd exibida aqui tambem vir recem-calculada
+  // ao clicar em ATUALIZAR.
   async function handleRefresh() {
     setRefreshing(true);
     try {
+      await ApiClient.refreshOdds().catch(() => null);
       await loadAll();
       await loadDetailedStats(selectedMatchIdRef.current);
     } catch {
@@ -137,6 +171,8 @@ export default function LiveMatches({ selectedLeague, onLeaguesChange, onOpenSid
   }
 
   const latestSnapshot = snapshots.length ? snapshots[snapshots.length - 1] : null;
+  const primaryRec = recommendations.find((r) => r.is_primary) || recommendations[0];
+  const otherRecs = recommendations.filter((r) => r.id !== primaryRec?.id);
 
   const matchForCard = selectedMatch
     ? {
@@ -188,15 +224,23 @@ export default function LiveMatches({ selectedLeague, onLeaguesChange, onOpenSid
         )}
 
         {selectedMatch ? (
-          <div className="space-y-5">
-            <LiveMatchCard match={matchForCard} hideTabs />
-            <DetailedStatsPanel
-              homeName={selectedMatch.home_team.name}
-              awayName={selectedMatch.away_team.name}
-              snapshot={latestSnapshot}
-              detailed={detailedStats}
-              loading={detailedLoading}
-            />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div className="lg:col-span-2 space-y-5 min-w-0">
+              <LiveMatchCard match={matchForCard} hideTabs />
+              <DetailedStatsPanel
+                homeName={selectedMatch.home_team.name}
+                awayName={selectedMatch.away_team.name}
+                snapshot={latestSnapshot}
+                detailed={detailedStats}
+                loading={detailedLoading}
+              />
+              <OddsMovementChart history={oddsHistory} marketLabel={primaryRec?.selection} />
+            </div>
+
+            <div className="space-y-5">
+              <MainRecommendationCard recommendation={primaryRec} />
+              <OtherRecommendations recommendations={otherRecs} allRecommendations={recommendations} />
+            </div>
           </div>
         ) : (
           <div className="bg-panel border border-border rounded-xl p-10 text-center">

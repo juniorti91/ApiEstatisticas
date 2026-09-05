@@ -58,6 +58,29 @@ _SNAPSHOT_NEW_COLUMNS: dict[str, str] = {
     "goalkeeper_saves_away": "INTEGER DEFAULT 0",
     "xg_home": "FLOAT DEFAULT 0",
     "xg_away": "FLOAT DEFAULT 0",
+    # Agregados de jogador que o collect_snapshots passou a coletar a cada
+    # ciclo (ver app/models/snapshot.py e app/services/collector.py).
+    "duels_total_home": "INTEGER DEFAULT 0",
+    "duels_total_away": "INTEGER DEFAULT 0",
+    "duels_won_home": "INTEGER DEFAULT 0",
+    "duels_won_away": "INTEGER DEFAULT 0",
+    "dribbles_attempts_home": "INTEGER DEFAULT 0",
+    "dribbles_attempts_away": "INTEGER DEFAULT 0",
+    "dribbles_success_home": "INTEGER DEFAULT 0",
+    "dribbles_success_away": "INTEGER DEFAULT 0",
+    "tackles_total_home": "INTEGER DEFAULT 0",
+    "tackles_total_away": "INTEGER DEFAULT 0",
+    "interceptions_home": "INTEGER DEFAULT 0",
+    "interceptions_away": "INTEGER DEFAULT 0",
+    "passes_key_home": "INTEGER DEFAULT 0",
+    "passes_key_away": "INTEGER DEFAULT 0",
+    "fouls_committed_home": "INTEGER DEFAULT 0",
+    "fouls_committed_away": "INTEGER DEFAULT 0",
+    "fouls_drawn_home": "INTEGER DEFAULT 0",
+    "fouls_drawn_away": "INTEGER DEFAULT 0",
+    "top_players_home": "TEXT",
+    "top_players_away": "TEXT",
+    "player_stats_available": "INTEGER DEFAULT 1",
 }
 
 

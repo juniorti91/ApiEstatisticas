@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { StatRow } from "./StatBar";
 
 // Linhas que vem do snapshot (coleta automatica a cada 5 min, sem custo
 // extra de API) - basicas + as novas adicionadas em stats_mapper.py.
@@ -42,30 +43,6 @@ const DEFENSE_ROWS = [
   { key: "passes_key", label: "Passes-chave" },
   { key: "fouls_committed", label: "Faltas cometidas" },
 ];
-
-function Bar({ value, max, color, align }) {
-  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
-  return (
-    <div className={`flex-1 h-2 rounded-full bg-panel2 overflow-hidden flex ${align === "right" ? "justify-end" : ""}`}>
-      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
-    </div>
-  );
-}
-
-function StatRow({ label, home, away }) {
-  const max = Math.max(home, away, 1);
-  const formattedHome = Number.isInteger(home) ? home : home.toFixed(1);
-  const formattedAway = Number.isInteger(away) ? away : away.toFixed(1);
-  return (
-    <div className="flex items-center gap-1.5 sm:gap-3">
-      <span className="w-9 sm:w-10 text-right text-sm text-slate-200 shrink-0">{formattedHome}</span>
-      <Bar value={home} max={max} color="#3b82f6" align="right" />
-      <span className="w-24 sm:w-48 text-center text-[10px] sm:text-xs text-muted shrink-0 truncate">{label}</span>
-      <Bar value={away} max={max} color="#ef4444" />
-      <span className="w-9 sm:w-10 text-sm text-slate-200 shrink-0">{formattedAway}</span>
-    </div>
-  );
-}
 
 function Section({ title, right, children }) {
   return (
@@ -141,26 +118,31 @@ export default function DetailedStatsPanel({ homeName, awayName, snapshot, detai
       <Section title="Finalizações">
         {SNAPSHOT_ROWS.map((r) => {
           const v = val(r.key);
-          return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} />;
+          return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} statKey={r.key} />;
         })}
         {(s.xg_home || s.xg_away) ? (
-          <StatRow label={XG_ROW.label} home={s.xg_home ?? 0} away={s.xg_away ?? 0} />
+          <StatRow label={XG_ROW.label} home={s.xg_home ?? 0} away={s.xg_away ?? 0} statKey={XG_ROW.key} />
         ) : null}
       </Section>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <Section title="Posse & Passes">
-          <StatRow label="Posse de bola (%)" home={s.possession_home ?? 0} away={s.possession_away ?? 0} />
+          <StatRow
+            label="Posse de bola (%)"
+            home={s.possession_home ?? 0}
+            away={s.possession_away ?? 0}
+            statKey="possession"
+          />
           {PASSES_ROWS.map((r) => {
             const v = val(r.key);
-            return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} />;
+            return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} statKey={r.key} />;
           })}
         </Section>
 
         <Section title="Disciplina">
           {DISCIPLINE_ROWS.map((r) => {
             const v = val(r.key);
-            return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} />;
+            return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} statKey={r.key} />;
           })}
         </Section>
       </div>
@@ -178,7 +160,7 @@ export default function DetailedStatsPanel({ homeName, awayName, snapshot, detai
           ) : (
             DUEL_ROWS.map((r) => {
               const v = val(r.key);
-              return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} />;
+              return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} statKey={r.key} />;
             })
           )}
         </Section>
@@ -190,9 +172,14 @@ export default function DetailedStatsPanel({ homeName, awayName, snapshot, detai
             <>
               {DEFENSE_ROWS.map((r) => {
                 const v = val(r.key);
-                return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} />;
+                return <StatRow key={r.key} label={r.label} home={v.home} away={v.away} statKey={r.key} />;
               })}
-              <StatRow label="Defesas do goleiro" home={s.goalkeeper_saves_home ?? 0} away={s.goalkeeper_saves_away ?? 0} />
+              <StatRow
+                label="Defesas do goleiro"
+                home={s.goalkeeper_saves_home ?? 0}
+                away={s.goalkeeper_saves_away ?? 0}
+                statKey="goalkeeper_saves"
+              />
             </>
           )}
         </Section>

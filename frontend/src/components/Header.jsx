@@ -27,10 +27,17 @@ export default function Header({
             {subtitle}
             <span
               className="inline-flex items-center gap-1 text-[11px] text-accent bg-accentdim px-2 py-0.5 rounded-full"
-              title="O sistema coleta novas estatísticas das partidas ao vivo e recalcula as recomendações automaticamente a cada 5 minutos."
+              title="O sistema coleta novas estatísticas das partidas ao vivo automaticamente a cada 5 minutos."
             >
               <Clock size={11} />
-              Coleta automática a cada 5 min
+              Estatísticas a cada 5 min
+            </span>
+            <span
+              className="inline-flex items-center gap-1 text-[11px] text-accent bg-accentdim px-2 py-0.5 rounded-full"
+              title="As odds ao vivo e as recomendações são reconsultadas com mais frequência que as estatísticas, para ficarem próximas do tempo real em todas as telas."
+            >
+              <Clock size={11} />
+              Odds a cada 2 min
             </span>
           </p>
         </div>

@@ -6,6 +6,12 @@ Orquestra os jobs em background com APScheduler:
   * collect_job   -> a cada COLLECTOR_INTERVAL_MINUTES (padrao 5): grava
                      um snapshot de cada partida monitorada, gera/atualiza
                      as recomendacoes e confere partidas que terminaram.
+  * odds_job      -> a cada ODDS_REFRESH_INTERVAL_MINUTES (padrao 2): so
+                     reconsulta as odds ao vivo e recalcula as
+                     recomendacoes com o snapshot mais recente ja salvo
+                     (sem gastar chamadas de estatisticas de novo) - existe
+                     para a odd exibida no front atualizar mais rapido do
+                     que o ciclo completo de coleta.
 
 Cada job abre sua propria sessao de banco (AsyncSessionLocal) e a fecha
 ao final, para nao segurar conexoes entre execucoes.
@@ -46,6 +52,19 @@ async def run_collection_cycle() -> None:
             logger.exception("Erro no ciclo de coleta/recomendacao")
 
 
+async def run_odds_refresh_cycle() -> None:
+    """Ciclo curto e barato: NAO busca estatisticas novas (isso continua
+    so no run_collection_cycle, a cada 5 min) - so reconsulta as odds ao
+    vivo e recalcula as recomendacoes usando o snapshot mais recente que
+    ja estiver salvo. E o que faz a odd parecer "ao vivo de verdade" em
+    todas as telas sem esperar o proximo ciclo completo de coleta."""
+    async with AsyncSessionLocal() as session:
+        try:
+            await generate_recommendations_for_all_live(session)
+        except Exception:  # noqa: BLE001
+            logger.exception("Erro no ciclo de atualizacao de odds")
+
+
 def start_scheduler() -> None:
     if scheduler.running:
         return
@@ -66,11 +85,20 @@ def start_scheduler() -> None:
         max_instances=1,
         coalesce=True,
     )
+    scheduler.add_job(
+        run_odds_refresh_cycle,
+        trigger=IntervalTrigger(minutes=settings.odds_refresh_interval_minutes),
+        id="refresh_odds",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.start()
     logger.info(
-        "Scheduler iniciado: scan a cada %dmin, coleta a cada %dmin.",
+        "Scheduler iniciado: scan a cada %dmin, coleta a cada %dmin, odds a cada %dmin.",
         settings.live_scan_interval_minutes,
         settings.collector_interval_minutes,
+        settings.odds_refresh_interval_minutes,
     )
 
 

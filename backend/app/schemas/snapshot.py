@@ -57,6 +57,29 @@ class MatchSnapshotOut(BaseModel):
     xg_home: float = 0
     xg_away: float = 0
 
+    duels_total_home: int = 0
+    duels_total_away: int = 0
+    duels_won_home: int = 0
+    duels_won_away: int = 0
+    dribbles_attempts_home: int = 0
+    dribbles_attempts_away: int = 0
+    dribbles_success_home: int = 0
+    dribbles_success_away: int = 0
+    tackles_total_home: int = 0
+    tackles_total_away: int = 0
+    interceptions_home: int = 0
+    interceptions_away: int = 0
+    passes_key_home: int = 0
+    passes_key_away: int = 0
+    fouls_committed_home: int = 0
+    fouls_committed_away: int = 0
+    fouls_drawn_home: int = 0
+    fouls_drawn_away: int = 0
+
+    top_players_home: list[dict] = []
+    top_players_away: list[dict] = []
+    player_stats_available: bool = True
+
     model_config = {"from_attributes": True}
 
 

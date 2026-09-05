@@ -28,6 +28,7 @@ export const ApiClient = {
   getPerformance: (days = 30) =>
     api.get(`/api/dashboard/performance?days=${days}`).then((r) => r.data),
   collectNow: () => api.post("/api/dashboard/collect-now").then((r) => r.data),
+  refreshOdds: () => api.post("/api/dashboard/refresh-odds").then((r) => r.data),
 };
 
 export default api;

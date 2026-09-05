@@ -17,8 +17,28 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./betanalyzer.db"
 
-    collector_interval_minutes: int = 5
+    # Ciclo principal de coleta: busca TODAS as estatisticas disponiveis de
+    # cada partida monitorada (de time via /fixtures/statistics + de
+    # jogador via /fixtures/players) e grava um MatchSnapshot completo.
+    # Por pedido explicito de coletar tudo periodicamente, o padrao e 3 min
+    # (era 5) - e agora sao 2 requisicoes de API por partida a cada ciclo
+    # (era 1), entao o consumo de cota sobe mais ainda. Combine com
+    # MONITORED_LEAGUE_IDS e MAX_MONITORED_FIXTURES abaixo se sua cota
+    # diaria for apertada.
+    collector_interval_minutes: int = 3
     live_scan_interval_minutes: int = 2
+
+    # Ciclo dedicado, mais frequente, que SO reconsulta as odds ao vivo e
+    # recalcula as recomendacoes (usa o ultimo snapshot ja salvo, sem
+    # buscar estatisticas novas de novo) - e o que faz a odd exibida em
+    # todas as telas parecer "em tempo real" sem esperar o ciclo completo
+    # de coleta de 5 min. Custa 1 requisicao de odds por partida monitorada
+    # a cada execucao (mesmo endpoint que ja era chamado dentro do ciclo de
+    # coleta) - com o teto padrao de MAX_MONITORED_FIXTURES=8, a 2 min isso
+    # e ~4x mais chamadas de odds do que so o ciclo de 5 min. Se sua cota
+    # da API-Football for apertada, aumente esse valor no .env.
+    odds_refresh_interval_minutes: int = 2
+
     monitored_league_ids: str = "39,140,135,78,61,71"
 
     # Limite de partidas monitoradas simultaneamente - protege a cota diaria
@@ -36,8 +56,9 @@ class Settings(BaseSettings):
     # 5 - usar 3 reduz em ~40% as chamadas de API gastas nesse calculo.
     team_form_sample_size: int = 3
 
-    # Aceita uma ou varias origens separadas por virgula (ex: em producao,
-    # a URL do frontend na Vercel + previews + localhost para dev local).
+    # Pode conter uma ou mais URLs separadas por virgula (ex:
+    # "https://betanalyzer.vercel.app,https://outra-url.vercel.app") - ver
+    # frontend_origin_list abaixo, usado pelo CORS em main.py.
     frontend_origin: str = "http://localhost:5173"
 
     @property
@@ -46,7 +67,7 @@ class Settings(BaseSettings):
 
     @property
     def frontend_origin_list(self) -> list[str]:
-        return [origin.strip() for origin in self.frontend_origin.split(",") if origin.strip()]
+        return [x.strip() for x in self.frontend_origin.split(",") if x.strip()]
 
 
 @lru_cache

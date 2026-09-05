@@ -15,9 +15,7 @@ from app.schemas.comparison import ComparisonMetric, MatchComparison
 from app.schemas.detailed_stats import DetailedMatchStats, PlayerRatingOut, TeamDetailedStats
 from app.schemas.fixture import FixtureOut
 from app.schemas.snapshot import ManualSnapshotIn, MatchSnapshotOut
-from app.services.api_football_client import ApiFootballError, api_football_client
 from app.services.collector import track_fixture_by_id
-from app.services.stats_mapper import aggregate_player_stats
 from app.services.team_form_service import get_or_refresh_team_form
 
 logger = logging.getLogger("betanalyzer.matches")
@@ -158,16 +156,15 @@ async def get_comparison(fixture_id: int, session: AsyncSession = Depends(get_se
 @router.get("/{fixture_id}/detailed-stats", response_model=DetailedMatchStats)
 async def get_detailed_stats(fixture_id: int, session: AsyncSession = Depends(get_session)):
     """
-    Estatisticas detalhadas para a tela "Partidas Ao Vivo": finalizacoes
-    completas, passes, defesas do goleiro e xG vem do ultimo snapshot
-    salvo (sem custo extra de API). Duelos, dribles, desarmes e as notas
-    dos jogadores sao buscados agora, na hora, direto na API-Football via
-    /fixtures/players - por isso este endpoint e mais lento que os outros
-    e so deve ser chamado quando o usuario realmente abre os detalhes de
-    uma partida (nao no polling geral da lista).
+    Estatisticas detalhadas para a tela "Partidas Ao Vivo". Desde que
+    `collect_snapshots` (ver services/collector.py) passou a buscar
+    TAMBEM /fixtures/players a cada ciclo de coleta, tudo aqui - inclusive
+    duelos, dribles, desarmes e as notas dos jogadores - ja vem pronto do
+    ultimo snapshot salvo. Este endpoint nao faz mais nenhuma chamada a
+    API-Football: e so leitura do banco, entao pode ser chamado a vontade
+    (inclusive no polling normal da tela) sem custo extra de cota.
     """
-    result = await session.execute(_fixture_query().where(Fixture.id == fixture_id))
-    fixture = result.scalars().first()
+    fixture = await session.get(Fixture, fixture_id)
     if fixture is None:
         raise HTTPException(status_code=404, detail="Partida nao encontrada")
 
@@ -188,32 +185,23 @@ async def get_detailed_stats(fixture_id: int, session: AsyncSession = Depends(ge
             passes_pct=getattr(snapshot, f"passes_pct_{prefix}", 0) or 0,
             goalkeeper_saves=getattr(snapshot, f"goalkeeper_saves_{prefix}", 0) or 0,
             xg=getattr(snapshot, f"xg_{prefix}", 0) or 0,
+            duels_total=getattr(snapshot, f"duels_total_{prefix}", 0) or 0,
+            duels_won=getattr(snapshot, f"duels_won_{prefix}", 0) or 0,
+            dribbles_attempts=getattr(snapshot, f"dribbles_attempts_{prefix}", 0) or 0,
+            dribbles_success=getattr(snapshot, f"dribbles_success_{prefix}", 0) or 0,
+            tackles_total=getattr(snapshot, f"tackles_total_{prefix}", 0) or 0,
+            interceptions=getattr(snapshot, f"interceptions_{prefix}", 0) or 0,
+            passes_key=getattr(snapshot, f"passes_key_{prefix}", 0) or 0,
+            fouls_committed=getattr(snapshot, f"fouls_committed_{prefix}", 0) or 0,
+            fouls_drawn=getattr(snapshot, f"fouls_drawn_{prefix}", 0) or 0,
         )
 
     home_stats = base_team_stats("home")
     away_stats = base_team_stats("away")
 
-    player_stats_available = True
-    top_players_home: list[PlayerRatingOut] = []
-    top_players_away: list[PlayerRatingOut] = []
-
-    try:
-        home_team = await session.get(Team, fixture.home_team_id)
-        away_team = await session.get(Team, fixture.away_team_id)
-        raw_players = await api_football_client.fixture_players(fixture.api_fixture_id)
-        if raw_players:
-            agg = aggregate_player_stats(raw_players, home_team.api_id, away_team.api_id)
-            for field, value in agg["home"].items():
-                setattr(home_stats, field, value)
-            for field, value in agg["away"].items():
-                setattr(away_stats, field, value)
-            top_players_home = [PlayerRatingOut(**p) for p in agg["top_players_home"]]
-            top_players_away = [PlayerRatingOut(**p) for p in agg["top_players_away"]]
-        else:
-            player_stats_available = False
-    except ApiFootballError as exc:
-        logger.warning("Falha ao buscar estatisticas de jogadores da partida %s: %s", fixture_id, exc)
-        player_stats_available = False
+    top_players_home = [PlayerRatingOut(**p) for p in (snapshot.top_players_home if snapshot else []) or []]
+    top_players_away = [PlayerRatingOut(**p) for p in (snapshot.top_players_away if snapshot else []) or []]
+    player_stats_available = bool(snapshot.player_stats_available) if snapshot else True
 
     return DetailedMatchStats(
         home=home_stats,

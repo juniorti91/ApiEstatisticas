@@ -140,11 +140,13 @@ def aggregate_player_stats(
     passes-chave, faltas - mais os 3 jogadores mais bem avaliados de cada
     lado.
 
-    So e chamado sob demanda, quando o usuario abre os detalhes de uma
-    partida (endpoint /matches/{id}/detailed-stats) - nunca no ciclo de
-    coleta automatico do collector.py, porque /fixtures/players custa uma
-    requisicao de API inteira por partida e rodar isso a cada 5 minutos
-    para todas as partidas monitoradas gastaria cota rapido demais.
+    Chamado pelo collect_snapshots (app/services/collector.py) a cada
+    ciclo de coleta, para TODAS as partidas monitoradas - por pedido
+    explicito de coletar todas as estatisticas disponiveis periodicamente
+    e guardar o historico. Isso custa uma requisicao de API inteira por
+    partida a cada ciclo (/fixtures/players); com COLLECTOR_INTERVAL_MINUTES
+    baixo (ex: 3 min) e muitas partidas monitoradas ao mesmo tempo, fique de
+    olho na cota diaria do seu plano da API-Football.
     """
 
     def empty_side() -> dict[str, int]:

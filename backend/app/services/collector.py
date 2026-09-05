@@ -6,9 +6,15 @@ Dois ritmos, por performance:
     barato: so lista partidas ao vivo nas ligas monitoradas e
     cria/atualiza os registros de Fixture. E o que decide QUAIS partidas
     entram em observacao.
-  * `collect_snapshots`   - roda a cada 5 minutos (o requisito principal)
-    e busca as estatisticas detalhadas (escanteios, chutes, posse...) de
-    cada partida ja em observacao, gravando um MatchSnapshot por partida.
+  * `collect_snapshots`   - roda a cada COLLECTOR_INTERVAL_MINUTES (padrao
+    3 min) e busca TODAS as estatisticas disponiveis de cada partida ja em
+    observacao - as de time (/fixtures/statistics: escanteios, chutes,
+    posse...) e as agregadas de jogador (/fixtures/players: duelos,
+    dribles, desarmes, notas...) - gravando um MatchSnapshot por partida
+    com o pacote completo. Por pedido explicito de coletar TUDO
+    periodicamente (nao so sob demanda): isso custa 2 requisicoes de API
+    por partida monitorada a cada ciclo, em vez de 1 - de olho na cota
+    diaria se muitas partidas estiverem em observacao ao mesmo tempo.
 
 Ambos sao chamados pelo scheduler (app/services/scheduler.py).
 """
@@ -16,6 +22,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +33,7 @@ from app.models.league import League
 from app.models.snapshot import MatchSnapshot
 from app.models.team import Team
 from app.services.api_football_client import ApiFootballError, api_football_client
-from app.services.stats_mapper import parse_fixture_statistics
+from app.services.stats_mapper import aggregate_player_stats, parse_fixture_statistics
 
 logger = logging.getLogger("betanalyzer.collector")
 
@@ -203,18 +210,17 @@ async def track_fixture_by_id(session: AsyncSession, api_fixture_id: int) -> Fix
 
 async def collect_snapshots(session: AsyncSession) -> int:
     """
-    Para cada partida em observacao e efetivamente ao vivo, busca as
-    estatisticas atuais na API e grava um MatchSnapshot. Retorna quantos
-    snapshots foram criados.
+    Para cada partida em observacao e efetivamente ao vivo, busca TODAS as
+    estatisticas disponiveis na API (de time e de jogador) e grava um
+    MatchSnapshot com o pacote completo. Retorna quantos snapshots foram
+    criados.
 
     NAO rebusca status/minuto/placar aqui: isso ja vem fresco (no maximo
     ~2 minutos desatualizado) do `scan_live_fixtures`, que roda mais
     seguido e ja atualiza esses campos em `Fixture` para toda partida ao
     vivo (e confirma o encerramento das que sumiram da lista). Refazer
-    essa consulta por partida a cada 5 minutos so pra reler o mesmo dado
-    era 1 requisicao inteira desperdicada por partida monitorada a cada
-    coleta - com 15 partidas isso sozinho respondia por boa parte do
-    consumo de cota.
+    essa consulta por partida a cada ciclo so pra reler o mesmo dado seria
+    1 requisicao inteira desperdicada por partida monitorada.
     """
     result = await session.execute(
         select(Fixture).where(Fixture.is_monitored.is_(True))
@@ -239,13 +245,46 @@ async def collect_snapshots(session: AsyncSession) -> int:
         away_team = await session.get(Team, fixture.away_team_id)
         parsed = parse_fixture_statistics(raw_stats, home_team.api_id, away_team.api_id)
 
+        # Estatisticas agregadas de jogador (duelos, dribles, desarmes,
+        # interceptacoes, passes-chave, faltas, notas) - 1 requisicao de
+        # API a mais por partida a cada ciclo. Se ainda nao houver dados de
+        # jogador para essa partida (comum nos primeiros minutos) ou a
+        # chamada falhar, guarda zeros e marca player_stats_available=False
+        # em vez de travar a coleta do resto das estatisticas.
+        player_fields: dict[str, Any] = {}
+        top_players_home: list[dict] = []
+        top_players_away: list[dict] = []
+        player_stats_available = True
+        try:
+            raw_players = await api_football_client.fixture_players(fixture.api_fixture_id)
+        except ApiFootballError as exc:
+            logger.info(
+                "Estatisticas de jogador indisponiveis para a partida %s: %s", fixture.api_fixture_id, exc
+            )
+            raw_players = []
+
+        if raw_players:
+            agg = aggregate_player_stats(raw_players, home_team.api_id, away_team.api_id)
+            for field, value in agg["home"].items():
+                player_fields[f"{field}_home"] = value
+            for field, value in agg["away"].items():
+                player_fields[f"{field}_away"] = value
+            top_players_home = agg["top_players_home"]
+            top_players_away = agg["top_players_away"]
+        else:
+            player_stats_available = False
+
         snapshot = MatchSnapshot(
             fixture_id=fixture.id,
             captured_at=datetime.utcnow(),
             minute=fixture.elapsed_minutes,
             goals_home=fixture.goals_home,
             goals_away=fixture.goals_away,
+            top_players_home=top_players_home,
+            top_players_away=top_players_away,
+            player_stats_available=player_stats_available,
             **parsed,
+            **player_fields,
         )
         session.add(snapshot)
         created += 1

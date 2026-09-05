@@ -82,3 +82,14 @@ async def collect_now(session: AsyncSession = Depends(get_session)):
         "recommendations_updated": recommended,
         "fixtures_settled": settled,
     }
+
+
+@router.post("/refresh-odds")
+async def refresh_odds(session: AsyncSession = Depends(get_session)):
+    """Dispara na hora so o ciclo de odds/recomendacoes (o mesmo que roda
+    sozinho a cada ODDS_REFRESH_INTERVAL_MINUTES), sem esperar o proximo
+    tick do agendador nem gastar chamadas de estatisticas de novo. E o
+    que o botao ATUALIZAR chama, pra toda odd exibida na tela vir
+    recem-calculada em vez de mostrar o que ja estava salvo ha ate 2 min."""
+    recommended = await generate_recommendations_for_all_live(session)
+    return {"recommendations_updated": recommended}

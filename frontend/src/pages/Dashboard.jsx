@@ -181,15 +181,17 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMatchId]);
 
-  // O botao ATUALIZAR agora so releo o que ja esta no banco local (rapido,
-  // sem gastar cota da API-Football) em vez de forcar um novo ciclo de
-  // coleta a cada clique. A coleta de dados ao vivo ja roda sozinha no
-  // backend a cada 5 minutos (COLLECTOR_INTERVAL_MINUTES) - clicar aqui
-  // repetidamente antes disparava uma rodada extra de chamadas externas
-  // por clique, o que era lento e consumia requisicoes sem necessidade.
+  // O botao ATUALIZAR nao dispara mais um ciclo completo de coleta (isso
+  // continua so automatico, a cada 5 min - ver COLLECTOR_INTERVAL_MINUTES)
+  // pra nao gastar chamadas de estatisticas a cada clique. Mas ele FORCA
+  // na hora o ciclo de odds/recomendacoes (o mesmo que ja roda sozinho a
+  // cada ODDS_REFRESH_INTERVAL_MINUTES) antes de reler o banco, pra toda
+  // odd exibida na tela vir recem-calculada em vez de mostrar o que ja
+  // estava salvo ha ate alguns minutos.
   async function handleRefresh() {
     setRefreshing(true);
     try {
+      await ApiClient.refreshOdds().catch(() => null);
       await loadAll();
     } catch {
       setLoadError("Falha ao atualizar - o backend pode estar offline.");
