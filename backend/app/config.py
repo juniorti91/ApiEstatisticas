@@ -20,24 +20,19 @@ class Settings(BaseSettings):
     # Ciclo principal de coleta: busca TODAS as estatisticas disponiveis de
     # cada partida monitorada (de time via /fixtures/statistics + de
     # jogador via /fixtures/players) e grava um MatchSnapshot completo.
-    # Por pedido explicito de coletar tudo periodicamente, o padrao e 3 min
-    # (era 5) - e agora sao 2 requisicoes de API por partida a cada ciclo
-    # (era 1), entao o consumo de cota sobe mais ainda. Combine com
-    # MONITORED_LEAGUE_IDS e MAX_MONITORED_FIXTURES abaixo se sua cota
+    # Volta a 5 min por pedido explicito do usuario (chegou a ser 3 min
+    # antes) - sao 2 requisicoes de API por partida a cada ciclo. Combine
+    # com MONITORED_LEAGUE_IDS e MAX_MONITORED_FIXTURES abaixo se sua cota
     # diaria for apertada.
-    collector_interval_minutes: int = 3
+    collector_interval_minutes: int = 5
     live_scan_interval_minutes: int = 2
 
-    # Ciclo dedicado, mais frequente, que SO reconsulta as odds ao vivo e
-    # recalcula as recomendacoes (usa o ultimo snapshot ja salvo, sem
-    # buscar estatisticas novas de novo) - e o que faz a odd exibida em
-    # todas as telas parecer "em tempo real" sem esperar o ciclo completo
-    # de coleta de 5 min. Custa 1 requisicao de odds por partida monitorada
-    # a cada execucao (mesmo endpoint que ja era chamado dentro do ciclo de
-    # coleta) - com o teto padrao de MAX_MONITORED_FIXTURES=8, a 2 min isso
-    # e ~4x mais chamadas de odds do que so o ciclo de 5 min. Se sua cota
-    # da API-Football for apertada, aumente esse valor no .env.
-    odds_refresh_interval_minutes: int = 2
+    # Ciclo dedicado que SO reconsulta as odds ao vivo e recalcula as
+    # recomendacoes (usa o ultimo snapshot ja salvo, sem buscar
+    # estatisticas novas de novo). So pode ser mudado aqui/no .env - por
+    # pedido explicito do usuario, NAO existe mais edicao pela tela (ver
+    # app/routers/settings.py, que agora e so-leitura).
+    odds_refresh_interval_minutes: int = 5
 
     monitored_league_ids: str = "39,140,135,78,61,71"
 

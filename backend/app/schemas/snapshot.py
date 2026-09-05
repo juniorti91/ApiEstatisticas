@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class MatchSnapshotOut(BaseModel):
@@ -79,6 +79,17 @@ class MatchSnapshotOut(BaseModel):
     top_players_home: list[dict] = []
     top_players_away: list[dict] = []
     player_stats_available: bool = True
+
+    # Linhas de snapshot gravadas ANTES da coluna existir ficaram com NULL
+    # no banco (a migracao ALTER TABLE nao tinha DEFAULT). Sem isso, o
+    # Pydantic rejeita o None explicito vindo do ORM mesmo com "= []" acima
+    # (o default so vale quando o campo e OMITIDO, nao quando vem None) -
+    # foi exatamente isso que derrubou GET /api/matches/{id}/snapshots em
+    # producao. Convertemos None -> [] antes da validacao normal.
+    @field_validator("top_players_home", "top_players_away", mode="before")
+    @classmethod
+    def _null_to_empty_list(cls, value):
+        return [] if value is None else value
 
     model_config = {"from_attributes": True}
 

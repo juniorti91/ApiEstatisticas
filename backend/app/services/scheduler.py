@@ -3,15 +3,20 @@ Orquestra os jobs em background com APScheduler:
 
   * scan_job      -> a cada LIVE_SCAN_INTERVAL_MINUTES: descobre partidas
                      ao vivo novas nas ligas monitoradas.
-  * collect_job   -> a cada COLLECTOR_INTERVAL_MINUTES (padrao 5): grava
-                     um snapshot de cada partida monitorada, gera/atualiza
-                     as recomendacoes e confere partidas que terminaram.
-  * odds_job      -> a cada ODDS_REFRESH_INTERVAL_MINUTES (padrao 2): so
-                     reconsulta as odds ao vivo e recalcula as
-                     recomendacoes com o snapshot mais recente ja salvo
-                     (sem gastar chamadas de estatisticas de novo) - existe
-                     para a odd exibida no front atualizar mais rapido do
-                     que o ciclo completo de coleta.
+  * collect_job   -> a cada COLLECTOR_INTERVAL_MINUTES: grava um snapshot
+                     completo (estatisticas de time + de jogador) de cada
+                     partida monitorada, gera/atualiza as recomendacoes e
+                     confere partidas que terminaram.
+  * odds_job      -> a cada ODDS_REFRESH_INTERVAL_MINUTES: so reconsulta as
+                     odds ao vivo e recalcula as recomendacoes com o
+                     snapshot mais recente ja salvo (sem gastar chamadas de
+                     estatisticas de novo) - existe para a odd exibida no
+                     front atualizar mais rapido do que o ciclo completo
+                     de coleta.
+
+Todos os tres intervalos so podem ser mudados no .env (por pedido
+explicito do usuario) - nao ha mais edicao pela tela; mudar exige editar
+o .env e reiniciar o backend.
 
 Cada job abre sua propria sessao de banco (AsyncSessionLocal) e a fecha
 ao final, para nao segurar conexoes entre execucoes.
@@ -54,9 +59,9 @@ async def run_collection_cycle() -> None:
 
 async def run_odds_refresh_cycle() -> None:
     """Ciclo curto e barato: NAO busca estatisticas novas (isso continua
-    so no run_collection_cycle, a cada 5 min) - so reconsulta as odds ao
-    vivo e recalcula as recomendacoes usando o snapshot mais recente que
-    ja estiver salvo. E o que faz a odd parecer "ao vivo de verdade" em
+    so no run_collection_cycle) - so reconsulta as odds ao vivo e
+    recalcula as recomendacoes usando o snapshot mais recente que ja
+    estiver salvo. E o que faz a odd parecer "ao vivo de verdade" em
     todas as telas sem esperar o proximo ciclo completo de coleta."""
     async with AsyncSessionLocal() as session:
         try:
