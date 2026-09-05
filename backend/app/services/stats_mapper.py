@@ -36,6 +36,19 @@ _FIELD_MAP = {
     "Ball Possession": "possession",
     "Yellow Cards": "yellow_cards",
     "Red Cards": "red_cards",
+    # Campos adicionados para a tela detalhada de "Partidas Ao Vivo" - todos
+    # ja vem de graca no mesmo /fixtures/statistics chamado a cada ciclo de
+    # coleta (nenhuma requisicao extra de API), so nao eram lidos ainda.
+    "Blocked Shots": "shots_blocked",
+    "Shots insidebox": "shots_inside_box",
+    "Shots outsidebox": "shots_outside_box",
+    "Total passes": "passes_total",
+    "Passes accurate": "passes_accurate",
+    "Passes %": "passes_pct",
+    "Goalkeeper Saves": "goalkeeper_saves",
+    # Gols esperados (xG): so algumas competicoes/planos da API-Football
+    # expoem esse tipo - quando ausente, fica 0 (ver _to_number/extract_side).
+    "expected_goals": "xg",
 }
 
 
@@ -98,4 +111,104 @@ def parse_fixture_statistics(
         "offsides_away": int(g(away_side, "offsides")),
         "dangerous_attacks_home": int(dangerous_home),
         "dangerous_attacks_away": int(dangerous_away),
+        "shots_blocked_home": int(g(home_side, "shots_blocked")),
+        "shots_blocked_away": int(g(away_side, "shots_blocked")),
+        "shots_inside_box_home": int(g(home_side, "shots_inside_box")),
+        "shots_inside_box_away": int(g(away_side, "shots_inside_box")),
+        "shots_outside_box_home": int(g(home_side, "shots_outside_box")),
+        "shots_outside_box_away": int(g(away_side, "shots_outside_box")),
+        "passes_total_home": int(g(home_side, "passes_total")),
+        "passes_total_away": int(g(away_side, "passes_total")),
+        "passes_accurate_home": int(g(home_side, "passes_accurate")),
+        "passes_accurate_away": int(g(away_side, "passes_accurate")),
+        "passes_pct_home": g(home_side, "passes_pct"),
+        "passes_pct_away": g(away_side, "passes_pct"),
+        "goalkeeper_saves_home": int(g(home_side, "goalkeeper_saves")),
+        "goalkeeper_saves_away": int(g(away_side, "goalkeeper_saves")),
+        "xg_home": g(home_side, "xg"),
+        "xg_away": g(away_side, "xg"),
+    }
+
+
+def aggregate_player_stats(
+    raw_players: list[dict], home_team_api_id: int, away_team_api_id: int
+) -> dict[str, Any]:
+    """
+    Recebe o `response` cru de /fixtures/players (uma entrada por time, com
+    a lista de jogadores e suas estatisticas na partida) e devolve os
+    totais agregados por time - duelos, dribles, desarmes, interceptacoes,
+    passes-chave, faltas - mais os 3 jogadores mais bem avaliados de cada
+    lado.
+
+    So e chamado sob demanda, quando o usuario abre os detalhes de uma
+    partida (endpoint /matches/{id}/detailed-stats) - nunca no ciclo de
+    coleta automatico do collector.py, porque /fixtures/players custa uma
+    requisicao de API inteira por partida e rodar isso a cada 5 minutos
+    para todas as partidas monitoradas gastaria cota rapido demais.
+    """
+
+    def empty_side() -> dict[str, int]:
+        return {
+            "duels_total": 0,
+            "duels_won": 0,
+            "dribbles_attempts": 0,
+            "dribbles_success": 0,
+            "tackles_total": 0,
+            "interceptions": 0,
+            "passes_key": 0,
+            "fouls_committed": 0,
+            "fouls_drawn": 0,
+        }
+
+    sides = {home_team_api_id: empty_side(), away_team_api_id: empty_side()}
+    ratings: dict[int, list[dict]] = {home_team_api_id: [], away_team_api_id: []}
+
+    for team_entry in raw_players:
+        team_id = team_entry.get("team", {}).get("id")
+        if team_id not in sides:
+            continue
+        side = sides[team_id]
+        for player_entry in team_entry.get("players", []):
+            stats_list = player_entry.get("statistics") or []
+            if not stats_list:
+                continue
+            st = stats_list[0] or {}
+
+            duels = st.get("duels") or {}
+            dribbles = st.get("dribbles") or {}
+            tackles = st.get("tackles") or {}
+            passes = st.get("passes") or {}
+            fouls = st.get("fouls") or {}
+            games = st.get("games") or {}
+
+            side["duels_total"] += duels.get("total") or 0
+            side["duels_won"] += duels.get("won") or 0
+            side["dribbles_attempts"] += dribbles.get("attempts") or 0
+            side["dribbles_success"] += dribbles.get("success") or 0
+            side["tackles_total"] += tackles.get("total") or 0
+            side["interceptions"] += tackles.get("interceptions") or 0
+            side["passes_key"] += passes.get("key") or 0
+            side["fouls_committed"] += fouls.get("committed") or 0
+            side["fouls_drawn"] += fouls.get("drawn") or 0
+
+            rating = _to_number(games.get("rating")) or None
+            minutes_played = games.get("minutes") or 0
+            if rating and minutes_played > 0:
+                player = player_entry.get("player") or {}
+                ratings[team_id].append(
+                    {
+                        "name": player.get("name") or "?",
+                        "rating": rating,
+                        "photo": player.get("photo") or "",
+                    }
+                )
+
+    def top3(team_id: int) -> list[dict]:
+        return sorted(ratings.get(team_id, []), key=lambda p: p["rating"], reverse=True)[:3]
+
+    return {
+        "home": sides[home_team_api_id],
+        "away": sides[away_team_api_id],
+        "top_players_home": top3(home_team_api_id),
+        "top_players_away": top3(away_team_api_id),
     }

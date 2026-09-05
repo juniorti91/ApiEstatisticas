@@ -10,9 +10,12 @@ import {
   X,
 } from "lucide-react";
 
+// Paginas de verdade, navegaveis (ver App.jsx). As demais entradas ainda
+// nao tem tela propria - ficam visiveis (proximos passos do produto) mas
+// sem acao ao clicar, em vez de sumir da barra lateral.
 const NAV_ITEMS = [
-  { label: "Dashboard", icon: LayoutDashboard, active: true },
-  { label: "Partidas Ao Vivo", icon: Radio },
+  { label: "Dashboard", icon: LayoutDashboard, page: "dashboard" },
+  { label: "Partidas Ao Vivo", icon: Radio, page: "live" },
   { label: "Recomendações", icon: Zap },
   { label: "Histórico de Apostas", icon: ClipboardList },
   { label: "Análises", icon: LineChart },
@@ -28,6 +31,8 @@ export default function Sidebar({
   onToggleValueBets,
   open,
   onClose,
+  currentPage,
+  onNavigate,
 }) {
   return (
     <>
@@ -62,19 +67,30 @@ export default function Sidebar({
         </div>
 
       <nav className="flex-1 py-4 px-3 space-y-1">
-        {NAV_ITEMS.map(({ label, icon: Icon, active }) => (
-          <button
-            key={label}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-              active
-                ? "bg-accentdim text-accent font-medium"
-                : "text-muted hover:bg-panel2 hover:text-slate-200"
-            }`}
-          >
-            <Icon size={17} />
-            {label}
-          </button>
-        ))}
+        {NAV_ITEMS.map(({ label, icon: Icon, page }) => {
+          const active = page && page === currentPage;
+          return (
+            <button
+              key={label}
+              disabled={!page}
+              onClick={() => {
+                if (!page) return;
+                onNavigate?.(page);
+                onClose?.();
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                active
+                  ? "bg-accentdim text-accent font-medium"
+                  : page
+                  ? "text-muted hover:bg-panel2 hover:text-slate-200"
+                  : "text-muted/50 cursor-default"
+              }`}
+            >
+              <Icon size={17} />
+              {label}
+            </button>
+          );
+        })}
       </nav>
 
       <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">

@@ -6,8 +6,6 @@ tudo passa por SQLAlchemy Core/ORM, trocar para Postgres em producao e
 apenas uma questao de mudar DATABASE_URL no .env - nenhum codigo de
 modelo/servico precisa mudar.
 """
-import os
-import re
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -18,16 +16,6 @@ from app.config import settings
 connect_args = {}
 if settings.database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
-    # Garante que a pasta do arquivo .db exista antes do SQLAlchemy tentar
-    # abri-lo - essencial quando DATABASE_URL aponta pra um disco persistente
-    # montado em produção (ex: sqlite+aiosqlite:////data/betanalyzer.db no
-    # Koyeb), cuja pasta pode nao ter sido criada ainda no primeiro deploy.
-    match = re.match(r"sqlite\+aiosqlite:///(.+)", settings.database_url)
-    if match:
-        db_path = match.group(1)
-        db_dir = os.path.dirname(db_path)
-        if db_dir:
-            os.makedirs(db_dir, exist_ok=True)
 
 engine = create_async_engine(
     settings.database_url,
@@ -47,10 +35,51 @@ class Base(DeclarativeBase):
     pass
 
 
+# Colunas adicionadas depois ao MatchSnapshot (ver app/models/snapshot.py)
+# para a tela detalhada de "Partidas Ao Vivo". `Base.metadata.create_all`
+# so cria TABELAS que ainda nao existem - nunca adiciona colunas novas a
+# uma tabela ja existente. Como e um app pessoal com um unico banco
+# SQLite, uma ferramenta de migracao (Alembic) seria exagero: em vez
+# disso, checamos manualmente o que falta e adicionamos via ALTER TABLE.
+_SNAPSHOT_NEW_COLUMNS: dict[str, str] = {
+    "shots_blocked_home": "INTEGER DEFAULT 0",
+    "shots_blocked_away": "INTEGER DEFAULT 0",
+    "shots_inside_box_home": "INTEGER DEFAULT 0",
+    "shots_inside_box_away": "INTEGER DEFAULT 0",
+    "shots_outside_box_home": "INTEGER DEFAULT 0",
+    "shots_outside_box_away": "INTEGER DEFAULT 0",
+    "passes_total_home": "INTEGER DEFAULT 0",
+    "passes_total_away": "INTEGER DEFAULT 0",
+    "passes_accurate_home": "INTEGER DEFAULT 0",
+    "passes_accurate_away": "INTEGER DEFAULT 0",
+    "passes_pct_home": "FLOAT DEFAULT 0",
+    "passes_pct_away": "FLOAT DEFAULT 0",
+    "goalkeeper_saves_home": "INTEGER DEFAULT 0",
+    "goalkeeper_saves_away": "INTEGER DEFAULT 0",
+    "xg_home": "FLOAT DEFAULT 0",
+    "xg_away": "FLOAT DEFAULT 0",
+}
+
+
+async def _ensure_snapshot_columns(conn) -> None:
+    """Adiciona ao banco SQLite ja existente qualquer coluna nova do
+    MatchSnapshot que ainda nao exista - roda toda vez que o backend sobe,
+    mas e idempotente (so mexe no que realmente falta)."""
+    if not settings.database_url.startswith("sqlite"):
+        return  # Postgres/outros: usar uma ferramenta de migracao de verdade.
+
+    result = await conn.exec_driver_sql("PRAGMA table_info(match_snapshots)")
+    existing_columns = {row[1] for row in result.fetchall()}
+    for column, ddl_type in _SNAPSHOT_NEW_COLUMNS.items():
+        if column not in existing_columns:
+            await conn.exec_driver_sql(f"ALTER TABLE match_snapshots ADD COLUMN {column} {ddl_type}")
+
+
 async def init_db() -> None:
     """Cria as tabelas caso ainda nao existam (idempotente)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_snapshot_columns(conn)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

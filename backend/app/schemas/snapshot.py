@@ -37,6 +37,26 @@ class MatchSnapshotOut(BaseModel):
     dangerous_attacks_home: int
     dangerous_attacks_away: int
 
+    shots_blocked_home: int = 0
+    shots_blocked_away: int = 0
+    shots_inside_box_home: int = 0
+    shots_inside_box_away: int = 0
+    shots_outside_box_home: int = 0
+    shots_outside_box_away: int = 0
+
+    passes_total_home: int = 0
+    passes_total_away: int = 0
+    passes_accurate_home: int = 0
+    passes_accurate_away: int = 0
+    passes_pct_home: float = 0
+    passes_pct_away: float = 0
+
+    goalkeeper_saves_home: int = 0
+    goalkeeper_saves_away: int = 0
+
+    xg_home: float = 0
+    xg_away: float = 0
+
     model_config = {"from_attributes": True}
 
 

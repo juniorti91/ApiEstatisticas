@@ -15,7 +15,7 @@ function TeamBadge({ name, color }) {
   );
 }
 
-export default function LiveMatchCard({ match, activeTab, onTabChange }) {
+export default function LiveMatchCard({ match, activeTab, onTabChange, hideTabs = false }) {
   if (!match) return null;
   const possessionHome = match.possessionHome ?? 50;
   const possessionAway = 100 - possessionHome;
@@ -69,6 +69,7 @@ export default function LiveMatchCard({ match, activeTab, onTabChange }) {
         </div>
       </div>
 
+      {!hideTabs && (
       <div className="flex items-center gap-4 sm:gap-6 border-t border-border mt-3 pt-3 text-sm overflow-x-auto whitespace-nowrap">
         {TABS.map((tab) => (
           <button
@@ -84,6 +85,7 @@ export default function LiveMatchCard({ match, activeTab, onTabChange }) {
           </button>
         ))}
       </div>
+      )}
     </div>
   );
 }

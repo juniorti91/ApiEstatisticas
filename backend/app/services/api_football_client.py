@@ -91,6 +91,14 @@ class ApiFootballClient:
     async def fixture_events(self, fixture_id: int) -> list[dict]:
         return await self._get("/fixtures/events", {"fixture": fixture_id})
 
+    async def fixture_players(self, fixture_id: int) -> list[dict]:
+        """Estatisticas por jogador (duelos, dribles, notas...) de uma
+        partida. Usado SOB DEMANDA pela tela de detalhes de "Partidas Ao
+        Vivo" - nunca pelo ciclo de coleta automatico (collector.py),
+        porque custaria uma requisicao de API inteira a mais por partida
+        monitorada a cada ciclo."""
+        return await self._get("/fixtures/players", {"fixture": fixture_id})
+
     async def team_last_fixtures(self, team_id: int, last: int = 5) -> list[dict]:
         """Ultimas N partidas finalizadas de um time (para calcular a forma)."""
         return await self._get(

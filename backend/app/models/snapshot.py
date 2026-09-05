@@ -49,3 +49,28 @@ class MatchSnapshot(Base):
 
     dangerous_attacks_home: Mapped[int] = mapped_column(Integer, default=0)
     dangerous_attacks_away: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Campos adicionados para a tela detalhada de "Partidas Ao Vivo" (ver
+    # app/services/stats_mapper.py). Colunas novas numa tabela ja existente
+    # nao sao criadas pelo create_all do SQLAlchemy - a migracao leve que
+    # adiciona essas colunas ao banco ja existente fica em app/database.py
+    # (_ensure_snapshot_columns).
+    shots_blocked_home: Mapped[int] = mapped_column(Integer, default=0)
+    shots_blocked_away: Mapped[int] = mapped_column(Integer, default=0)
+    shots_inside_box_home: Mapped[int] = mapped_column(Integer, default=0)
+    shots_inside_box_away: Mapped[int] = mapped_column(Integer, default=0)
+    shots_outside_box_home: Mapped[int] = mapped_column(Integer, default=0)
+    shots_outside_box_away: Mapped[int] = mapped_column(Integer, default=0)
+
+    passes_total_home: Mapped[int] = mapped_column(Integer, default=0)
+    passes_total_away: Mapped[int] = mapped_column(Integer, default=0)
+    passes_accurate_home: Mapped[int] = mapped_column(Integer, default=0)
+    passes_accurate_away: Mapped[int] = mapped_column(Integer, default=0)
+    passes_pct_home: Mapped[float] = mapped_column(Float, default=0)
+    passes_pct_away: Mapped[float] = mapped_column(Float, default=0)
+
+    goalkeeper_saves_home: Mapped[int] = mapped_column(Integer, default=0)
+    goalkeeper_saves_away: Mapped[int] = mapped_column(Integer, default=0)
+
+    xg_home: Mapped[float] = mapped_column(Float, default=0)
+    xg_away: Mapped[float] = mapped_column(Float, default=0)

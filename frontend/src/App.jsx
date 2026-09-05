@@ -1,8 +1,12 @@
 import { useCallback, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
+import LiveMatches from "./pages/LiveMatches";
 
 export default function App() {
+  // Pagina atual - navegacao simples por estado (sem router: o app so tem
+  // duas telas reais por enquanto, uma lib de rotas seria exagero aqui).
+  const [currentPage, setCurrentPage] = useState("dashboard");
   const [selectedLeague, setSelectedLeague] = useState("Todas");
   const [onlyValueBets, setOnlyValueBets] = useState(false);
   // Ligas disponíveis no dashboard agora vêm das partidas ao vivo realmente
@@ -41,13 +45,23 @@ export default function App() {
         onToggleValueBets={() => setOnlyValueBets((v) => !v)}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        currentPage={currentPage}
+        onNavigate={setCurrentPage}
       />
-      <Dashboard
-        onlyValueBets={onlyValueBets}
-        selectedLeague={selectedLeague}
-        onLeaguesChange={handleLeaguesChange}
-        onOpenSidebar={() => setSidebarOpen(true)}
-      />
+      {currentPage === "live" ? (
+        <LiveMatches
+          selectedLeague={selectedLeague}
+          onLeaguesChange={handleLeaguesChange}
+          onOpenSidebar={() => setSidebarOpen(true)}
+        />
+      ) : (
+        <Dashboard
+          onlyValueBets={onlyValueBets}
+          selectedLeague={selectedLeague}
+          onLeaguesChange={handleLeaguesChange}
+          onOpenSidebar={() => setSidebarOpen(true)}
+        />
+      )}
     </div>
   );
 }
