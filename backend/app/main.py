@@ -35,9 +35,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# FRONTEND_ORIGIN pode conter uma ou mais URLs separadas por virgula (ex:
+# "https://betanalyzer.vercel.app,https://betanalyzer-git-main-seu-user.vercel.app").
+# Os localhost de dev ficam sempre liberados, mesmo em producao, para nao
+# quebrar quem roda o frontend localmente contra o backend hospedado.
+allowed_origins = list(
+    dict.fromkeys(settings.frontend_origin_list + ["http://localhost:5173", "http://127.0.0.1:5173"])
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin, "http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=allowed_origins,
+    # Cobre automaticamente os deploys de preview da Vercel (URLs geradas
+    # tipo https://betanalyzer-<hash>-<user>.vercel.app), que mudam a cada
+    # deploy e nao dariam pra listar uma a uma em FRONTEND_ORIGIN.
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

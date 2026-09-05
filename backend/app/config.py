@@ -36,11 +36,17 @@ class Settings(BaseSettings):
     # 5 - usar 3 reduz em ~40% as chamadas de API gastas nesse calculo.
     team_form_sample_size: int = 3
 
+    # Aceita uma ou varias origens separadas por virgula (ex: em producao,
+    # a URL do frontend na Vercel + previews + localhost para dev local).
     frontend_origin: str = "http://localhost:5173"
 
     @property
     def monitored_league_id_list(self) -> list[int]:
         return [int(x) for x in self.monitored_league_ids.split(",") if x.strip()]
+
+    @property
+    def frontend_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.frontend_origin.split(",") if origin.strip()]
 
 
 @lru_cache

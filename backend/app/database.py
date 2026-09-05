@@ -6,6 +6,8 @@ tudo passa por SQLAlchemy Core/ORM, trocar para Postgres em producao e
 apenas uma questao de mudar DATABASE_URL no .env - nenhum codigo de
 modelo/servico precisa mudar.
 """
+import os
+import re
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -16,6 +18,16 @@ from app.config import settings
 connect_args = {}
 if settings.database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
+    # Garante que a pasta do arquivo .db exista antes do SQLAlchemy tentar
+    # abri-lo - essencial quando DATABASE_URL aponta pra um disco persistente
+    # montado em produção (ex: sqlite+aiosqlite:////data/betanalyzer.db no
+    # Koyeb), cuja pasta pode nao ter sido criada ainda no primeiro deploy.
+    match = re.match(r"sqlite\+aiosqlite:///(.+)", settings.database_url)
+    if match:
+        db_path = match.group(1)
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
 
 engine = create_async_engine(
     settings.database_url,
