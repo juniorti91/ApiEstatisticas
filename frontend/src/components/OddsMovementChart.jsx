@@ -1,13 +1,23 @@
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { Flag } from "lucide-react";
 
 export default function OddsMovementChart({ history, marketLabel }) {
   const hasData = history && history.length > 0;
 
   return (
     <div className="bg-panel border border-border rounded-xl p-4 sm:p-5">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-slate-200">MOVIMENTAÇÃO DA RECOMENDAÇÃO</span>
-        {marketLabel && <span className="text-xs text-muted">{marketLabel}</span>}
+        {/* Pedido do usuario: destacar mais o mercado acompanhado por este
+            grafico (antes era so um texto pequeno e apagado em cinza,
+            facil de passar despercebido - agora vira um selo (badge) na
+            mesma linguagem visual do selo "FORTE" do card de recomendacao). */}
+        {marketLabel && (
+          <span className="inline-flex items-center gap-1.5 bg-accentdim text-accent text-xs font-semibold px-2.5 py-1 rounded-md shrink-0">
+            <Flag size={12} />
+            {marketLabel}
+          </span>
+        )}
       </div>
       {hasData ? (
         <ResponsiveContainer width="100%" height={260}>
@@ -29,6 +39,10 @@ export default function OddsMovementChart({ history, marketLabel }) {
                 name === "Probabilidade estimada" ? [`${(value * 100).toFixed(0)}%`, name] : [value, name]
               }
             />
+            {/* Legenda fixa pedida junto do resto do destaque: antes so dava
+                pra saber o que cada linha significa passando o mouse em cima
+                (tooltip) - agora fica visivel o tempo todo. */}
+            <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line yAxisId="odd" type="monotone" dataKey="odd" name="Odd" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
             <Line
               yAxisId="prob"
