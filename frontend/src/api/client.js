@@ -35,6 +35,14 @@ export const ApiClient = {
   refreshOdds: () => api.post("/api/dashboard/refresh-odds").then((r) => r.data),
 
   getSettings: () => api.get("/api/settings").then((r) => r.data),
+
+  getTeamHistory: (teamId) => api.get(`/api/teams/${teamId}/history`).then((r) => r.data),
+
+  getLineups: (id) => api.get(`/api/matches/${id}/lineups`).then((r) => r.data),
+
+  getH2H: (id) => api.get(`/api/matches/${id}/h2h`).then((r) => r.data),
+  getEvents: (id) => api.get(`/api/matches/${id}/events`).then((r) => r.data),
+  getPrognostics: (id) => api.get(`/api/matches/${id}/prognostics`).then((r) => r.data),
 };
 
 export default api;

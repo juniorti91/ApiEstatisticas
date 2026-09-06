@@ -91,6 +91,21 @@ class ApiFootballClient:
     async def fixture_events(self, fixture_id: int) -> list[dict]:
         return await self._get("/fixtures/events", {"fixture": fixture_id})
 
+    async def fixture_lineups(self, fixture_id: int) -> list[dict]:
+        """Escalacoes titulares/reservas de uma partida (formacao, tecnico,
+        e cada jogador com numero/posicao/grid) - a API-Football costuma
+        publicar isso uns 60min antes do apito inicial, e nao muda mais
+        depois disso (ao contrario de estatisticas/odds, que sao ao
+        vivo)."""
+        return await self._get("/fixtures/lineups", {"fixture": fixture_id})
+
+    async def fixture_injuries(self, fixture_id: int) -> list[dict]:
+        """Lesoes/suspensoes relacionadas a uma partida especifica. Plano/
+        cobertura por liga pode variar (endpoint separado, menos comum que
+        os outros) - chamador deve tratar lista vazia como normal, nao
+        como erro."""
+        return await self._get("/injuries", {"fixture": fixture_id})
+
     async def fixture_players(self, fixture_id: int) -> list[dict]:
         """Estatisticas por jogador (duelos, dribles, notas...) de uma
         partida. Usado SOB DEMANDA pela tela de detalhes de "Partidas Ao
@@ -104,6 +119,15 @@ class ApiFootballClient:
         return await self._get(
             "/fixtures", {"team": team_id, "last": last, "status": "FT"}
         )
+
+    async def head_to_head(self, team1_id: int, team2_id: int, last: int = 10) -> list[dict]:
+        """Ultimos confrontos diretos entre dois times, em qualquer
+        competicao - mesmo formato de resposta do endpoint generico
+        /fixtures (fixture/league/teams/goals/score), que ja e bem
+        documentado e estavel (igual /fixtures/lineups) - nao precisou de
+        script de diagnostico antes de usar, diferente do caso de odds ao
+        vivo."""
+        return await self._get("/fixtures/headtohead", {"h2h": f"{team1_id}-{team2_id}", "last": last})
 
     async def odds_for_fixture(self, fixture_id: int) -> list[dict]:
         """Odds de PRE-JOGO (fixas, tiradas no apito inicial) - NAO USADO

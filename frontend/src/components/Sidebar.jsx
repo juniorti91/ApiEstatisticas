@@ -3,6 +3,8 @@ import {
   Radio,
   Database,
   BarChart3,
+  Shirt,
+  Target,
   Zap,
   ClipboardList,
   LineChart,
@@ -20,10 +22,12 @@ const NAV_ITEMS = [
   { label: "Partidas Ao Vivo", icon: Radio, page: "live" },
   { label: "Dados do Jogo", icon: Database, page: "matchdata" },
   { label: "Comparativo Detalhado", icon: BarChart3, page: "matchstats" },
+  { label: "Escalações", icon: Shirt, page: "lineups" },
+  { label: "Prognósticos", icon: Target, page: "prognostics" },
   { label: "Recomendações", icon: Zap },
   { label: "Histórico de Apostas", icon: ClipboardList },
   { label: "Análises", icon: LineChart },
-  { label: "Times", icon: Users },
+  { label: "Times", icon: Users, page: "teams" },
   { label: "Configurações", icon: Settings },
 ];
 

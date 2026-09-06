@@ -4,6 +4,8 @@ import Header from "../components/Header";
 import LiveMatchCard from "../components/LiveMatchCard";
 import StatsComparisonPanel from "../components/StatsComparisonPanel";
 import PerformanceComparisonTable from "../components/PerformanceComparisonTable";
+import MatchInfoCard from "../components/MatchInfoCard";
+import MomentumTimeline from "../components/MomentumTimeline";
 import EvolutionChart from "../components/EvolutionChart";
 import OddsMovementChart from "../components/OddsMovementChart";
 import MainRecommendationCard from "../components/MainRecommendationCard";
@@ -29,6 +31,7 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [snapshots, setSnapshots] = useState([]);
   const [comparison, setComparison] = useState(null);
+  const [events, setEvents] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [oddsHistory, setOddsHistory] = useState([]);
   const [history, setHistory] = useState([]);
@@ -123,19 +126,26 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
     if (!matchId) {
       setSnapshots([]);
       setComparison(null);
+      setEvents([]);
       setRecommendations([]);
       setOddsHistory([]);
       return;
     }
-    const [rawSnaps, rawComp, rawRecs] = await Promise.all([
+    const [rawSnaps, rawComp, rawEvents, rawRecs] = await Promise.all([
       ApiClient.getSnapshots(matchId).catch(() => []),
       ApiClient.getComparison(matchId).catch(() => null),
+      // Eventos tem cache curto (60s) so enquanto a partida esta ao vivo -
+      // ver app/services/events_service.py - por isso e seguro buscar
+      // junto do resto a cada ciclo normal de atualizacao da tela (12s),
+      // sem gerar chamada nova a API-Football a cada poll.
+      ApiClient.getEvents(matchId).catch(() => ({ events: [] })),
       ApiClient.listFixtureRecommendations(matchId).catch(() => []),
     ]);
     const snaps = Array.isArray(rawSnaps) ? rawSnaps : [];
     const recs = Array.isArray(rawRecs) ? rawRecs : [];
     setSnapshots(snaps);
     setComparison(rawComp);
+    setEvents(Array.isArray(rawEvents?.events) ? rawEvents.events : []);
     setRecommendations(recs);
 
     const primary = recs.find((r) => r.is_primary) || recs[0];
@@ -274,19 +284,30 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
               <LiveMatchCard match={matchForCard} activeTab={activeTab} onTabChange={setActiveTab} />
 
               {activeTab === "Visão Geral" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <StatsComparisonPanel
-                    homeName={selectedMatch.home_team.name}
-                    awayName={selectedMatch.away_team.name}
-                    snapshot={latestSnapshot}
-                  />
-                  <PerformanceComparisonTable
-                    comparison={comparison}
-                    elapsedMinutes={selectedMatch.elapsed_minutes}
-                    homeName={selectedMatch.home_team.name}
-                    awayName={selectedMatch.away_team.name}
-                  />
+                <div className="space-y-5">
+                  <MatchInfoCard matchId={selectedMatch.id} match={selectedMatch} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <StatsComparisonPanel
+                      homeName={selectedMatch.home_team.name}
+                      awayName={selectedMatch.away_team.name}
+                      snapshot={latestSnapshot}
+                    />
+                    <PerformanceComparisonTable
+                      comparison={comparison}
+                      elapsedMinutes={selectedMatch.elapsed_minutes}
+                      homeName={selectedMatch.home_team.name}
+                      awayName={selectedMatch.away_team.name}
+                    />
+                  </div>
                 </div>
+              )}
+
+              {activeTab === "Eventos" && (
+                <MomentumTimeline
+                  events={events}
+                  homeName={selectedMatch.home_team.name}
+                  awayName={selectedMatch.away_team.name}
+                />
               )}
 
               {activeTab === "Comparativo" && (

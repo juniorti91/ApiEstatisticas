@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiClient } from "../api/client";
 import Header from "../components/Header";
+import LiveMatchCard from "../components/LiveMatchCard";
 
 // Le do banco local via nosso backend - nao consome cota da API-Football
 // (os snapshots ja foram coletados antes pelo ciclo de 5 min, ver
@@ -168,6 +169,18 @@ export default function MatchData({ selectedLeague, onLeaguesChange, onOpenSideb
   // mais recente primeiro, que e o que mais interessa checar ("salvou
   // certo agora ha pouco?") sem precisar rolar ate o fim da tabela.
   const orderedSnapshots = useMemo(() => [...snapshots].reverse(), [snapshots]);
+  const latestSnapshot = orderedSnapshots[0] || null;
+  // Mesmo "matchForCard" montado em LiveMatches.jsx - reusa o LiveMatchCard
+  // (placar + barra de posse) pra essa tela nao ficar so com uma tabela
+  // crua, sem contexto nenhum de como a partida esta agora.
+  const matchForCard = selectedMatch
+    ? {
+        ...selectedMatch,
+        possessionHome: latestSnapshot ? Math.round(latestSnapshot.possession_home) : 50,
+        periodLabel:
+          selectedMatch.status === "HT" ? "Intervalo" : selectedMatch.status === "2H" ? "2º TEMPO" : "1º TEMPO",
+      }
+    : null;
   const totalPages = Math.max(1, Math.ceil(orderedSnapshots.length / PAGE_SIZE));
   const safePage = Math.min(Math.max(page, 1), totalPages);
   const start = (safePage - 1) * PAGE_SIZE;
@@ -215,6 +228,8 @@ export default function MatchData({ selectedLeague, onLeaguesChange, onOpenSideb
         )}
 
         {selectedMatch ? (
+          <>
+          <LiveMatchCard match={matchForCard} hideTabs />
           <div className="bg-panel border border-border rounded-xl p-4 sm:p-5">
             <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
               <span className="text-sm font-medium text-slate-200">
@@ -337,6 +352,7 @@ export default function MatchData({ selectedLeague, onLeaguesChange, onOpenSideb
               </div>
             )}
           </div>
+          </>
         ) : (
           <div className="bg-panel border border-border rounded-xl p-10 text-center">
             <p className="text-slate-200 font-medium mb-1">Nenhuma partida ao vivo monitorada no momento</p>

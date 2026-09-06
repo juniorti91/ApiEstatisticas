@@ -4,6 +4,9 @@ import Dashboard from "./pages/Dashboard";
 import LiveMatches from "./pages/LiveMatches";
 import MatchData from "./pages/MatchData";
 import MatchStats from "./pages/MatchStats";
+import TeamHistory from "./pages/TeamHistory";
+import Lineups from "./pages/Lineups";
+import Prognostics from "./pages/Prognostics";
 
 export default function App() {
   // Pagina atual - navegacao simples por estado (sem router: o app so tem
@@ -64,6 +67,24 @@ export default function App() {
         />
       ) : currentPage === "matchstats" ? (
         <MatchStats
+          selectedLeague={selectedLeague}
+          onLeaguesChange={handleLeaguesChange}
+          onOpenSidebar={() => setSidebarOpen(true)}
+        />
+      ) : currentPage === "teams" ? (
+        <TeamHistory
+          selectedLeague={selectedLeague}
+          onLeaguesChange={handleLeaguesChange}
+          onOpenSidebar={() => setSidebarOpen(true)}
+        />
+      ) : currentPage === "lineups" ? (
+        <Lineups
+          selectedLeague={selectedLeague}
+          onLeaguesChange={handleLeaguesChange}
+          onOpenSidebar={() => setSidebarOpen(true)}
+        />
+      ) : currentPage === "prognostics" ? (
+        <Prognostics
           selectedLeague={selectedLeague}
           onLeaguesChange={handleLeaguesChange}
           onOpenSidebar={() => setSidebarOpen(true)}

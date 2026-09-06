@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiClient } from "../api/client";
 import Header from "../components/Header";
+import LiveMatchCard from "../components/LiveMatchCard";
 import { StatRow } from "../components/StatBar";
 
 // Mesmo intervalo de polling das outras telas ao vivo (Dados do Jogo,
@@ -26,6 +27,12 @@ export default function MatchStats({ selectedLeague, onLeaguesChange, onOpenSide
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [windowMinutes, setWindowMinutes] = useState(null);
   const [comparison, setComparison] = useState(null);
+  // So pra alimentar o LiveMatchCard (placar + barra de posse) no topo da
+  // tela - o mesmo cabecalho ja usado em Partidas Ao Vivo e Dados do Jogo,
+  // pra essa tela nao ficar so com barras de estatistica sem contexto
+  // nenhum de como a partida esta agora. Leitura pura do banco local, sem
+  // custo de API (mesmo endpoint que Dados do Jogo ja usa).
+  const [latestSnapshot, setLatestSnapshot] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(formatClock(new Date()));
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -86,18 +93,28 @@ export default function MatchStats({ selectedLeague, onLeaguesChange, onOpenSide
     setComparison(data);
   }, []);
 
+  const loadLatestSnapshot = useCallback(async (matchId) => {
+    if (!matchId) {
+      setLatestSnapshot(null);
+      return;
+    }
+    const raw = await ApiClient.getSnapshots(matchId).catch(() => []);
+    const list = Array.isArray(raw) ? raw : [];
+    setLatestSnapshot(list.length ? list[list.length - 1] : null);
+  }, []);
+
   const loadAll = useCallback(async () => {
     try {
       setLoadError("");
       const matches = await loadLiveMatches();
       const currentId = selectedMatchIdRef.current;
       const targetId = matches.some((m) => m.id === currentId) ? currentId : matches[0]?.id ?? null;
-      await loadComparison(targetId, windowMinutesRef.current);
+      await Promise.all([loadComparison(targetId, windowMinutesRef.current), loadLatestSnapshot(targetId)]);
       setLastUpdate(formatClock(new Date()));
     } catch {
       setLoadError("Não foi possível conectar ao backend. Verifique se o servidor FastAPI está rodando.");
     }
-  }, [loadLiveMatches, loadComparison]);
+  }, [loadLiveMatches, loadComparison, loadLatestSnapshot]);
 
   useEffect(() => {
     loadAll();
@@ -111,6 +128,11 @@ export default function MatchStats({ selectedLeague, onLeaguesChange, onOpenSide
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMatchId, windowMinutes]);
 
+  useEffect(() => {
+    loadLatestSnapshot(selectedMatchId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMatchId]);
+
   async function handleRefresh() {
     setRefreshing(true);
     try {
@@ -123,6 +145,16 @@ export default function MatchStats({ selectedLeague, onLeaguesChange, onOpenSide
   }
 
   const rows = comparison?.rows ?? [];
+  // Mesmo "matchForCard" de LiveMatches.jsx/MatchData.jsx - alimenta o
+  // LiveMatchCard reaproveitado como cabecalho desta tela.
+  const matchForCard = selectedMatch
+    ? {
+        ...selectedMatch,
+        possessionHome: latestSnapshot ? Math.round(latestSnapshot.possession_home) : 50,
+        periodLabel:
+          selectedMatch.status === "HT" ? "Intervalo" : selectedMatch.status === "2H" ? "2º TEMPO" : "1º TEMPO",
+      }
+    : null;
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -165,16 +197,10 @@ export default function MatchStats({ selectedLeague, onLeaguesChange, onOpenSide
         )}
 
         {selectedMatch ? (
+          <>
+          <LiveMatchCard match={matchForCard} hideTabs />
           <div className="bg-panel border border-border rounded-xl p-4 sm:p-5">
-            <div className="flex items-center justify-between text-sm font-medium px-1 mb-1">
-              <span className="text-blue-400 truncate">{selectedMatch.home_team.name}</span>
-              <span className="text-slate-400 text-xs">
-                {selectedMatch.goals_home} - {selectedMatch.goals_away} ({selectedMatch.elapsed_minutes}')
-              </span>
-              <span className="text-red-400 truncate">{selectedMatch.away_team.name}</span>
-            </div>
-
-            <div className="flex items-center justify-center gap-2 flex-wrap my-4">
+            <div className="flex items-center justify-center gap-2 flex-wrap mb-4">
               {WINDOWS.map((w) => (
                 <button
                   key={w.label}
@@ -211,6 +237,7 @@ export default function MatchStats({ selectedLeague, onLeaguesChange, onOpenSide
               )}
             </div>
           </div>
+          </>
         ) : (
           <div className="bg-panel border border-border rounded-xl p-10 text-center">
             <p className="text-slate-200 font-medium mb-1">Nenhuma partida ao vivo monitorada no momento</p>

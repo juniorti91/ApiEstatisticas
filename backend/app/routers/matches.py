@@ -14,9 +14,31 @@ from app.models.team import Team
 from app.schemas.comparison import ComparisonMetric, MatchComparison
 from app.schemas.detailed_stats import DetailedMatchStats, PlayerRatingOut, TeamDetailedStats
 from app.schemas.fixture import FixtureOut
+from app.schemas.h2h import H2HMatchOut, H2HOut
+from app.schemas.lineup import MatchLineupOut
+from app.schemas.match_events import MatchEventOut, MatchEventsOut
+from app.schemas.prognostics import (
+    AnomalyRowOut,
+    GoalWindowOut,
+    MomentumOut,
+    NextGoalOut,
+    PrognosticsOut,
+    WinProbabilityOut,
+)
 from app.schemas.snapshot import ManualSnapshotIn, MatchSnapshotOut
 from app.schemas.stat_comparison import StatComparisonOut, StatComparisonRow
 from app.services.collector import track_fixture_by_id
+from app.services.events_service import get_or_refresh_events
+from app.services.h2h_service import get_or_refresh_h2h
+from app.services.lineup_service import get_or_refresh_lineup
+from app.services.prognostics_service import (
+    compute_anomaly_summary,
+    compute_goal_window_probability,
+    compute_momentum,
+    compute_next_goal_probability,
+    compute_remaining_goal_expectation,
+    compute_win_probability,
+)
 from app.services.stat_window_service import build_stat_rows
 from app.services.team_form_service import get_or_refresh_team_form
 
@@ -25,6 +47,11 @@ logger = logging.getLogger("betanalyzer.matches")
 router = APIRouter(prefix="/api/matches", tags=["matches"])
 
 LIVE_STATUSES = ["1H", "2H", "HT", "ET", "BT", "P", "LIVE"]
+# Minuto minimo pra confiar nos modelos de prognostico (probabilidade de
+# vitoria/gol, momentum) - antes disso ha snapshot(s) de menos pra dizer
+# qualquer coisa util, mesmo com a media historica ajudando a suavizar
+# (ver blended_projection em prognostics_service.py).
+MIN_MINUTE_FOR_PROGNOSTICS = 5
 
 
 def _fixture_query():
@@ -83,6 +110,143 @@ async def get_stat_comparison(
         from_minute=from_minute,
         to_minute=to_minute,
         rows=[StatComparisonRow(key=r.key, label=r.label, home=r.home, away=r.away) for r in rows],
+    )
+
+
+@router.get("/{fixture_id}/lineups", response_model=MatchLineupOut)
+async def get_lineups(fixture_id: int, session: AsyncSession = Depends(get_session)):
+    """Escalação provável/titular, técnicos, árbitro e lesões/suspensões
+    da partida, para a tela "Escalações" - cacheado por horas (ver
+    app/services/lineup_service.py), já que essa informação não muda
+    durante o jogo."""
+    fixture = await session.get(Fixture, fixture_id)
+    if fixture is None:
+        raise HTTPException(status_code=404, detail="Partida nao encontrada")
+
+    cache = await get_or_refresh_lineup(session, fixture)
+    if cache is None:
+        return MatchLineupOut(lineup_available=False)
+
+    return MatchLineupOut(
+        referee=cache.referee,
+        formation_home=cache.formation_home,
+        formation_away=cache.formation_away,
+        coach_home=cache.coach_home,
+        coach_away=cache.coach_away,
+        lineup_home=cache.lineup_home or [],
+        lineup_away=cache.lineup_away or [],
+        substitutes_home=cache.substitutes_home or [],
+        substitutes_away=cache.substitutes_away or [],
+        injuries_home=cache.injuries_home or [],
+        injuries_away=cache.injuries_away or [],
+        lineup_available=bool(cache.lineup_home or cache.lineup_away),
+    )
+
+
+@router.get("/{fixture_id}/h2h", response_model=H2HOut)
+async def get_h2h(fixture_id: int, session: AsyncSession = Depends(get_session)):
+    """Ultimos confrontos diretos entre os dois times da partida, para o
+    card "H2H pre-jogo" - cacheado por par de times (ver
+    app/services/h2h_service.py), ja que o historico entre dois times so
+    muda quando eles jogam de novo um contra o outro."""
+    fixture = await session.get(Fixture, fixture_id)
+    if fixture is None:
+        raise HTTPException(status_code=404, detail="Partida nao encontrada")
+
+    home_team = await session.get(Team, fixture.home_team_id)
+    away_team = await session.get(Team, fixture.away_team_id)
+    cache = await get_or_refresh_h2h(session, home_team, away_team)
+    if cache is None:
+        return H2HOut(matches=[])
+
+    # A tela mostra so os confrontos mais recentes (ver referencia: 3-5
+    # jogos) - o cache guarda mais (FETCH_LAST) so pra nao precisar
+    # rebuscar na API se um dia quisermos mostrar mais no frontend.
+    matches = (cache.matches or [])[:5]
+    return H2HOut(matches=[H2HMatchOut(**m) for m in matches])
+
+
+@router.get("/{fixture_id}/events", response_model=MatchEventsOut)
+async def get_events(fixture_id: int, session: AsyncSession = Depends(get_session)):
+    """Eventos (gols, cartoes, substituicoes, VAR) da partida, para a
+    linha do tempo de eventos na aba Eventos - cacheado com validade curta
+    enquanto o jogo esta ao vivo (ver app/services/events_service.py)."""
+    fixture = await session.get(Fixture, fixture_id)
+    if fixture is None:
+        raise HTTPException(status_code=404, detail="Partida nao encontrada")
+
+    cache = await get_or_refresh_events(session, fixture)
+    if cache is None:
+        return MatchEventsOut(events=[])
+
+    return MatchEventsOut(events=[MatchEventOut(**e) for e in (cache.events or [])])
+
+
+@router.get("/{fixture_id}/prognostics", response_model=PrognosticsOut)
+async def get_prognostics(fixture_id: int, session: AsyncSession = Depends(get_session)):
+    """Probabilidade de vitoria (1X2), probabilidade de proximo gol,
+    probabilidade de gol nos proximos 5/10min, indice de Momentum e um
+    resumo do indice de anomalia - tudo calculado em cima dos snapshots e
+    do TeamForm que ja existem (nenhuma chamada nova a API-Football, ver
+    app/services/prognostics_service.py para o raciocinio de cada
+    modelo)."""
+    fixture = await session.get(Fixture, fixture_id)
+    if fixture is None:
+        raise HTTPException(status_code=404, detail="Partida nao encontrada")
+
+    result = await session.execute(
+        select(MatchSnapshot).where(MatchSnapshot.fixture_id == fixture_id).order_by(MatchSnapshot.minute)
+    )
+    snapshots = list(result.scalars().all())
+
+    if not snapshots or snapshots[-1].minute < MIN_MINUTE_FOR_PROGNOSTICS:
+        return PrognosticsOut(
+            minute=snapshots[-1].minute if snapshots else 0,
+            insufficient_data=True,
+            win_probability=WinProbabilityOut(home=1 / 3, draw=1 / 3, away=1 / 3),
+            next_goal=NextGoalOut(home=0.5, away=0.5),
+            goal_windows=GoalWindowOut(home_5min=0, away_5min=0, home_10min=0, away_10min=0),
+            momentum=MomentumOut(),
+            anomalies=[],
+        )
+
+    latest = snapshots[-1]
+    minute = latest.minute
+
+    home = await session.get(Team, fixture.home_team_id)
+    away = await session.get(Team, fixture.away_team_id)
+    home_form = await get_or_refresh_team_form(session, home)
+    away_form = await get_or_refresh_team_form(session, away)
+
+    remaining_home, remaining_away = compute_remaining_goal_expectation(
+        latest.goals_home, latest.goals_away, minute, home_form, away_form
+    )
+    win_prob = compute_win_probability(latest.goals_home, latest.goals_away, remaining_home, remaining_away)
+    next_goal = compute_next_goal_probability(remaining_home, remaining_away)
+    goal_windows = compute_goal_window_probability(remaining_home, remaining_away, minute)
+    momentum = compute_momentum(snapshots)
+    anomalies = compute_anomaly_summary(latest, minute, home_form, away_form)
+
+    return PrognosticsOut(
+        minute=minute,
+        insufficient_data=False,
+        win_probability=WinProbabilityOut(home=win_prob.home, draw=win_prob.draw, away=win_prob.away),
+        next_goal=NextGoalOut(home=next_goal.home, away=next_goal.away),
+        goal_windows=GoalWindowOut(
+            home_5min=goal_windows.home_5min,
+            away_5min=goal_windows.away_5min,
+            home_10min=goal_windows.home_10min,
+            away_10min=goal_windows.away_10min,
+        ),
+        momentum=MomentumOut(
+            home=momentum.home,
+            away=momentum.away,
+            home_delta=momentum.home_delta,
+            away_delta=momentum.away_delta,
+            home_trend=momentum.home_trend,
+            away_trend=momentum.away_trend,
+        ),
+        anomalies=[AnomalyRowOut(label=a.label, home_pct=a.home_pct, away_pct=a.away_pct) for a in anomalies],
     )
 
 
