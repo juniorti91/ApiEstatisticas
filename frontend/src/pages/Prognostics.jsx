@@ -306,7 +306,14 @@ export default function Prognostics({ selectedLeague, onLeaguesChange, onOpenSid
                     <tr className="text-muted text-xs">
                       <th className="text-left font-normal pb-2"></th>
                       <th className="text-right font-normal pb-2">Próx. 5min</th>
-                      <th className="text-right font-normal pb-2">Próx. 10min</th>
+                      {/* Corrigido a pedido do usuario: nao e mais a chance
+                          acumulada em qualquer ponto dos proximos 10min (que
+                          ja embutia a coluna de 5min ao lado) - agora e a
+                          fatia especifica da janela entre o minuto 5 e o
+                          minuto 10, pra nao parecer que soma por cima do 5min. */}
+                      <th className="text-right font-normal pb-2" title="Chance de gol especificamente entre o 5º e o 10º minuto a partir de agora (não soma com a coluna de 5min)">
+                        Entre 5-10min
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">

@@ -233,11 +233,26 @@ def compute_next_goal_probability(remaining_home: float, remaining_away: float) 
 def compute_goal_window_probability(
     remaining_home: float, remaining_away: float, minute: int
 ) -> GoalWindowProbability:
-    """P(pelo menos 1 gol nos proximos 5/10min) por time - distribui a
+    """P(pelo menos 1 gol nos proximos 5min) e P(gol especificamente ENTRE
+    o minuto 5 e o minuto 10 a partir de agora) por time - distribui a
     expectativa de gols restantes igualmente pelos minutos que faltam
     (ritmo constante e a suposicao mais simples e defensavel sem um modelo
     minuto-a-minuto de verdade) e usa Poisson(0) pra achar a chance de
-    NENHUM gol nessa janela, invertendo pra achar "pelo menos 1"."""
+    NENHUM gol numa janela, invertendo pra achar "pelo menos 1".
+
+    CORRIGIDO (pedido do usuario por audio) - a coluna de 10min antes
+    mostrava a probabilidade CUMULATIVA de gol em QUALQUER ponto dos
+    proximos 10 minutos (formula: 1 - Poisson(0, taxa*10)) - como essa
+    janela de 10min contem inteira a janela de 5min dentro dela, o numero
+    de 10min sempre "carregava junto" a chance que a coluna de 5min ja
+    informava (ex visto pelo usuario: 5min=8%, 10min=15% - o 15% ja
+    EMBUTIA o 8%, mas lado a lado na tela parecia que 15% era uma chance
+    "a mais", somada por cima do 5min, o que nao e bem assim). Agora
+    "Próx. 10min" mostra so a fatia MARGINAL, especifica da janela entre o
+    minuto 5 e o minuto 10 (sem repetir o que a coluna de 5min ja cobre):
+    P(gol ate 10min) - P(gol ate 5min) = P(nenhum gol nos primeiros 5min) x
+    P(pelo menos 1 gol nos 5min seguintes) - a chance "de verdade" do que
+    acontece especificamente nessa segunda metade da janela."""
     minutes_left = max(90 - minute, 0)
     if minutes_left <= 0:
         return GoalWindowProbability(home_5min=0.0, away_5min=0.0, home_10min=0.0, away_10min=0.0)
@@ -245,16 +260,24 @@ def compute_goal_window_probability(
     rate_home_per_min = remaining_home / minutes_left
     rate_away_per_min = remaining_away / minutes_left
 
-    def prob_at_least_one(rate_per_min: float, window: int) -> float:
+    def prob_up_to(rate_per_min: float, window: int) -> float:
         effective_window = min(window, minutes_left)
         rate = rate_per_min * effective_window
-        return round(1 - poisson_pmf(0, rate), 4)
+        return 1 - poisson_pmf(0, rate)
+
+    def prob_5min(rate_per_min: float) -> float:
+        return round(prob_up_to(rate_per_min, 5), 4)
+
+    def prob_marginal_5_to_10(rate_per_min: float) -> float:
+        p5 = prob_up_to(rate_per_min, 5)
+        p10 = prob_up_to(rate_per_min, 10)
+        return round(max(0.0, p10 - p5), 4)
 
     return GoalWindowProbability(
-        home_5min=prob_at_least_one(rate_home_per_min, 5),
-        away_5min=prob_at_least_one(rate_away_per_min, 5),
-        home_10min=prob_at_least_one(rate_home_per_min, 10),
-        away_10min=prob_at_least_one(rate_away_per_min, 10),
+        home_5min=prob_5min(rate_home_per_min),
+        away_5min=prob_5min(rate_away_per_min),
+        home_10min=prob_marginal_5_to_10(rate_home_per_min),
+        away_10min=prob_marginal_5_to_10(rate_away_per_min),
     )
 
 
