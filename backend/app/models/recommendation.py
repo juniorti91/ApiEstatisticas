@@ -41,6 +41,16 @@ class Recommendation(Base):
     # ao lado da odd, em vez de essa info ficar escondida so no texto da
     # justificativa.
     odd_is_live: Mapped[bool | None] = mapped_column(Integer, nullable=True, default=None)
+    # Odd capturada UMA UNICA VEZ, no momento em que essa recomendacao foi
+    # criada pela primeira vez (mesmo instante de created_at/minute_recommended
+    # abaixo) - ao contrario do campo `odd` acima, que e sobrescrito a cada
+    # ciclo de recalculo (~60s). Existe pra o usuario conseguir comparar
+    # "odd de entrada" vs "odd atual" e ter nocao de quanto o mercado se
+    # moveu desde que a recomendacao apareceu, sem precisar abrir o
+    # grafico de historico. None = registro criado antes dessa coluna
+    # existir (estado desconhecido, nunca um valor inventado - ver
+    # app/database.py).
+    entry_odd: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     estimated_probability: Mapped[float] = mapped_column(Float)  # 0-1
     implied_probability: Mapped[float] = mapped_column(Float)  # 0-1
     expected_value: Mapped[float] = mapped_column(Float)  # em % (EV)

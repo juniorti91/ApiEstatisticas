@@ -50,15 +50,45 @@ function UpdatedAgo({ updatedAt }) {
 // a cada ciclo): mostra quando essa recomendacao foi gerada PELA PRIMEIRA
 // VEZ (rec.created_at, que nunca muda depois) junto com o minuto de jogo
 // daquele momento (rec.minute_recommended) - pra responder "que horas foi
-// feita essa entrada", nao "quando foi a ultima olhada nela".
-function CreatedAt({ createdAt, minute }) {
+// feita essa entrada", nao "quando foi a ultima olhada nela". Mostra
+// tambem a odd capturada NAQUELE momento (rec.entry_odd, gravada uma unica
+// vez na criacao - ver app/models/recommendation.py) ao lado da odd atual,
+// com a variacao percentual entre as duas - da pra ver de relance o quanto
+// o mercado se moveu desde a entrada, sem precisar abrir o grafico de
+// historico.
+function CreatedAt({ createdAt, minute, entryOdd, currentOdd }) {
   const date = parseUtcTimestamp(createdAt);
   if (!date) return null;
   const clock = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  // entryOdd so existe pra recomendacoes criadas depois que essa coluna
+  // foi adicionada (registros antigos vem None - ver app/database.py) -
+  // nesse caso so omite a variacao em vez de inventar um numero.
+  let variation = null;
+  if (entryOdd && currentOdd) {
+    const pct = ((currentOdd - entryOdd) / entryOdd) * 100;
+    if (Math.abs(pct) >= 0.1) {
+      variation = (
+        <span className={pct < 0 ? "text-red-400" : "text-accent"}>
+          {" "}
+          ({pct > 0 ? "+" : ""}
+          {pct.toFixed(0)}%)
+        </span>
+      );
+    }
+  }
+
   return (
     <div className="text-[10px] text-muted">
       entrada feita às <span className="text-slate-400">{clock}</span>
       {minute ? ` (aos ${minute}')` : ""}
+      {entryOdd ? (
+        <>
+          {" "}
+          · odd na entrada <span className="text-slate-400">{entryOdd.toFixed(2)}</span>
+          {variation}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -136,7 +166,12 @@ export default function MainRecommendationCard({ recommendation }) {
           </div>
           <div className="text-lg font-semibold text-slate-100">{r.odd.toFixed(2)}</div>
           <UpdatedAgo updatedAt={r.updated_at} />
-          <CreatedAt createdAt={r.created_at} minute={r.minute_recommended} />
+          <CreatedAt
+            createdAt={r.created_at}
+            minute={r.minute_recommended}
+            entryOdd={r.entry_odd}
+            currentOdd={r.odd}
+          />
         </div>
         <div>
           <div className="text-[11px] text-muted mb-1">PROB. ESTIMADA</div>

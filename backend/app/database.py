@@ -111,6 +111,10 @@ _RECOMMENDATION_NEW_COLUMNS: dict[str, str] = {
     # viram NULL ("nunca soubemos") em vez de um horario inventado - ver
     # comentario em app/models/recommendation.py.
     "updated_at": "DATETIME",
+    # Mesma logica: sem DEFAULT, linhas gravadas antes dessa coluna existir
+    # ficam com entry_odd NULL (nunca soubemos a odd de entrada delas) em
+    # vez de assumir por engano que a odd atual sempre foi a de entrada.
+    "entry_odd": "FLOAT",
 }
 
 
@@ -125,12 +129,58 @@ async def _ensure_recommendation_columns(conn) -> None:
             await conn.exec_driver_sql(f"ALTER TABLE recommendations ADD COLUMN {column} {ddl_type}")
 
 
+async def _fix_team_form_duplicates(conn) -> None:
+    """Corrige o bug do MultipleResultsFound em team_form: uma corrida em
+    app/services/team_form_service.py (corrigida agora, mas que ja pode
+    ter deixado duplicatas gravadas num banco existente) permitia duas
+    linhas de TeamForm pro MESMO time - a primeira chamada seguinte que
+    tentasse ler o form daquele time quebrava com
+    "MultipleResultsFound: Multiple rows were found when one or none was
+    required" e ficava permanentemente quebrada pra aquele time (todo
+    /prognostics e todo ciclo de recomendacoes envolvendo ele passava a
+    falhar). Roda em toda subida do backend (idempotente, bem barato -
+    so mexe se houver duplicata de verdade):
+      1) apaga as linhas mais antigas de cada team_id duplicado, mantendo
+         so a mais recente (updated_at);
+      2) cria um indice UNICO em team_id pra nunca mais deixar isso
+         acontecer de novo (novas tentativas de duplicar caem no
+         IntegrityError tratado em team_form_service.py, em vez de
+         silenciosamente criar outra duplicata).
+    """
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    tables = await conn.exec_driver_sql(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='team_form'"
+    )
+    if not tables.fetchall():
+        return  # banco novo - a tabela ainda nem existe, create_all cuida do resto
+
+    await conn.exec_driver_sql(
+        """
+        DELETE FROM team_form
+        WHERE id NOT IN (
+            SELECT id FROM (
+                SELECT id, ROW_NUMBER() OVER (
+                    PARTITION BY team_id ORDER BY updated_at DESC, id DESC
+                ) AS rn
+                FROM team_form
+            ) WHERE rn = 1
+        )
+        """
+    )
+    await conn.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_team_form_team_id ON team_form(team_id)"
+    )
+
+
 async def init_db() -> None:
     """Cria as tabelas caso ainda nao existam (idempotente)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_snapshot_columns(conn)
         await _ensure_recommendation_columns(conn)
+        await _fix_team_form_duplicates(conn)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

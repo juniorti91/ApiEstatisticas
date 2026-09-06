@@ -14,6 +14,9 @@ class RecommendationOut(BaseModel):
     # None = registro antigo, gravado antes desta coluna existir (estado
     # desconhecido) - ver comentario em app/models/recommendation.py.
     odd_is_live: bool | None = None
+    # None = registro antigo, gravado antes desta coluna existir - ver
+    # comentario em app/models/recommendation.py.
+    entry_odd: float | None = None
     estimated_probability: float
     implied_probability: float
     expected_value: float

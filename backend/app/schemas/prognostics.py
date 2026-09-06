@@ -34,6 +34,16 @@ class AnomalyRowOut(BaseModel):
     away_pct: float | None = None
 
 
+class MomentumPointOut(BaseModel):
+    """Um ponto da serie de Momentum ao longo do jogo - ver
+    prognostics_service.compute_momentum_series. Usado pelo mini-grafico
+    "Fluxo da partida" no card do placar (LiveMatchCard.jsx)."""
+
+    minute: int
+    home: float
+    away: float
+
+
 class PrognosticsOut(BaseModel):
     minute: int
     # True quando a partida ainda nao tem minutos suficientes pra confiar
@@ -44,4 +54,5 @@ class PrognosticsOut(BaseModel):
     next_goal: NextGoalOut
     goal_windows: GoalWindowOut
     momentum: MomentumOut
+    momentum_series: list[MomentumPointOut] = []
     anomalies: list[AnomalyRowOut] = []

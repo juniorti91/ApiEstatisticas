@@ -38,15 +38,40 @@ function UpdatedAgo({ updatedAt }) {
 
 // Quando essa recomendacao foi gerada PELA PRIMEIRA VEZ (created_at nunca
 // muda depois) junto com o minuto de jogo daquele momento - "que horas foi
-// feita essa entrada", diferente do UpdatedAgo (ultimo recalculo).
-function CreatedAt({ createdAt, minute }) {
+// feita essa entrada", diferente do UpdatedAgo (ultimo recalculo). Mesma
+// logica do MainRecommendationCard: mostra tambem a odd de entrada
+// (r.entry_odd, gravada uma unica vez na criacao) e a variacao % em
+// relacao a odd atual.
+function CreatedAt({ createdAt, minute, entryOdd, currentOdd }) {
   const date = parseUtcTimestamp(createdAt);
   if (!date) return null;
   const clock = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  let variation = null;
+  if (entryOdd && currentOdd) {
+    const pct = ((currentOdd - entryOdd) / entryOdd) * 100;
+    if (Math.abs(pct) >= 0.1) {
+      variation = (
+        <span className={pct < 0 ? "text-red-400" : "text-accent"}>
+          {" "}
+          ({pct > 0 ? "+" : ""}
+          {pct.toFixed(0)}%)
+        </span>
+      );
+    }
+  }
+
   return (
     <div className="text-[9px] text-muted">
       entrada às <span className="text-slate-400">{clock}</span>
       {minute ? ` (aos ${minute}')` : ""}
+      {entryOdd ? (
+        <>
+          {" "}
+          · odd {entryOdd.toFixed(2)}
+          {variation}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -104,7 +129,12 @@ function FullRecommendationCard({ r }) {
           </div>
           <div className="text-sm font-semibold text-slate-100">{r.odd.toFixed(2)}</div>
           <UpdatedAgo updatedAt={r.updated_at} />
-          <CreatedAt createdAt={r.created_at} minute={r.minute_recommended} />
+          <CreatedAt
+            createdAt={r.created_at}
+            minute={r.minute_recommended}
+            entryOdd={r.entry_odd}
+            currentOdd={r.odd}
+          />
         </div>
         <div>
           <div className="text-[10px] text-muted mb-0.5">PROB. EST.</div>

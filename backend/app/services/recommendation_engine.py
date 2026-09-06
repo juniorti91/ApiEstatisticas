@@ -146,6 +146,11 @@ async def _upsert_recommendation(
             team_focus=team_focus,
             line=line,
             minute_recommended=minute,
+            # Gravada so aqui, na criacao - nunca mais tocada depois (ver
+            # rec.odd mais abaixo, que SIM e sobrescrito a cada ciclo).
+            # Permite ao usuario comparar "odd de entrada" com a odd atual
+            # pra ter nocao de quanto o mercado se moveu desde entao.
+            entry_odd=odd,
         )
         session.add(rec)
     # BUG CORRIGIDO AQUI: uma recomendacao JA EXISTENTE (pendente, sendo
@@ -340,7 +345,22 @@ async def _btts_market(
 
     found = find_live_odd(
         live_markets, ["both teams to score", "btts"], ["no"],
-        exclude_keywords=["1st half", "2nd half"],
+        # BUG CORRIGIDO AQUI: "result" e "double chance" excluidos porque a
+        # API-Football tambem expoe mercados COMBINADOS cujo nome contem a
+        # frase "Both Teams To Score" dentro dele, tipo "Result/Both Teams
+        # To Score" (resultado 1X2 + BTTS combinados, com selecoes tipo
+        # "1/No", "X/No", "2/No" - cada uma com uma probabilidade/odd BEM
+        # diferente da odd do mercado BTTS puro). Como o match era so por
+        # substring ("both teams to score" in nome_do_mercado), o
+        # mercado combinado batia igualzinho ao mercado simples e, se
+        # aparecesse primeiro na lista da API, a funcao pegava a odd de
+        # uma dessas selecoes combinadas e mostrava como se fosse a odd
+        # pura de "Ambos Marcam - Nao" - foi exatamente o sintoma
+        # reportado (recomendacao mostrando odd 3.75, que na verdade era
+        # a odd do "Sim" do mercado real, com o mercado combinado
+        # confirmado no proprio texto de justificativa salvo: 'Result /
+        # Both Teams To Score').
+        exclude_keywords=["1st half", "2nd half", "result", "double chance"],
     )
     matched_market_name = ""
     if found is not None:
@@ -405,6 +425,16 @@ async def generate_recommendations_for_all_live(session: AsyncSession) -> int:
         ))
     )
     fixtures = list(result.scalars().all())
+    if not fixtures:
+        # BUG DE COTA CORRIGIDO AQUI: sem essa saida antecipada, o job de
+        # odds (a cada ~60s, ver scheduler.py) chamava fetch_live_odds_by_fixture
+        # -> /odds/live TODA VEZ, mesmo sem nenhuma partida monitorada ao
+        # vivo pra aplicar o resultado - ou seja, gastava 1 chamada de API
+        # por minuto (ate 1440/dia) inteiramente jogada fora em qualquer
+        # periodo sem jogo ao vivo nas ligas monitoradas (ex: de madrugada).
+        # Encontrado numa auditoria pedida explicitamente apos o uso da
+        # cota diaria (plano Pro, 7500 req/dia) chamar atencao.
+        return 0
     # 1 UNICA chamada de API cobre as odds ao vivo de TODAS as partidas em
     # andamento agora (ver odds_service.fetch_live_odds_by_fixture) - antes
     # cada partida gastava sua propria chamada de /odds aqui.

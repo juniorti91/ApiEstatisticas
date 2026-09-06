@@ -13,6 +13,7 @@ import logging
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -24,6 +25,20 @@ from app.services.stats_mapper import extract_side
 logger = logging.getLogger("betanalyzer.team_form")
 
 
+async def _latest_form(session: AsyncSession, team_id: int) -> TeamForm | None:
+    """Busca o TeamForm mais recente de um time - TOLERANTE a mais de uma
+    linha existir pro mesmo team_id (ver comentario grande abaixo sobre a
+    corrida que causava isso). Usar scalar_one_or_none() aqui quebrava com
+    MultipleResultsFound assim que uma duplicata acontecia, derrubando
+    /prognostics e o ciclo de recomendacoes pra aquele time PERMANENTEMENTE
+    (toda chamada seguinte batia no mesmo erro) - agora so pega a mais
+    atualizada e segue em frente."""
+    result = await session.execute(
+        select(TeamForm).where(TeamForm.team_id == team_id).order_by(TeamForm.updated_at.desc())
+    )
+    return result.scalars().first()
+
+
 async def get_or_refresh_team_form(
     session: AsyncSession,
     team: Team,
@@ -31,8 +46,7 @@ async def get_or_refresh_team_form(
     max_age_hours: int = 12,
 ) -> TeamForm:
     sample_size = sample_size or settings.team_form_sample_size
-    result = await session.execute(select(TeamForm).where(TeamForm.team_id == team.id))
-    form = result.scalar_one_or_none()
+    form = await _latest_form(session, team.id)
 
     is_stale = form is None or (datetime.utcnow() - form.updated_at) > timedelta(hours=max_age_hours)
     if not is_stale:
@@ -89,7 +103,8 @@ async def get_or_refresh_team_form(
         return round(sum(values) / len(values), 2) if values else 0.0
 
     n = len(recent)
-    if form is None:
+    is_new = form is None
+    if is_new:
         form = TeamForm(team_id=team.id, sample_size=sample_size)
         session.add(form)
 
@@ -106,7 +121,30 @@ async def get_or_refresh_team_form(
     form.btts_rate = round((btts_count / n) * 100, 1) if n else 0.0
     form.over_2_5_rate = round((over_25_count / n) * 100, 1) if n else 0.0
 
-    await session.commit()
+    if is_new:
+        # CORRIGIDO - causa raiz do MultipleResultsFound: como o intervalo
+        # entre o SELECT la em cima e este COMMIT inclui varias chamadas
+        # `await` a API-Football (que cedem o controle pro event loop),
+        # duas requisicoes concorrentes pro MESMO time (ex: ele aparece
+        # como mandante numa partida e visitante em outra, ambas sendo
+        # exibidas ao mesmo tempo no dashboard) podiam ver "nenhum form
+        # ainda" ao mesmo tempo e cada uma inserir sua propria linha - a
+        # tabela nao tinha nenhuma restricao de unicidade em team_id pra
+        # impedir isso (ver migracao em app/database.py, que agora cria um
+        # indice UNIQUE). Com o indice, a segunda tentativa cai aqui: em
+        # vez de derrubar a requisicao, descarta a insercao e usa a linha
+        # que a outra requisicao concorrente ja gravou.
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            winner = await _latest_form(session, team.id)
+            if winner is not None:
+                return winner
+            raise  # nao deveria acontecer (colisao mas sem linha nenhuma la) - deixa estourar
+    else:
+        await session.commit()
+
     await session.refresh(form)
     return form
 
@@ -114,6 +152,15 @@ async def get_or_refresh_team_form(
 async def _empty_form(session: AsyncSession, team: Team, sample_size: int) -> TeamForm:
     form = TeamForm(team_id=team.id, sample_size=sample_size, updated_at=datetime.utcnow())
     session.add(form)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Mesma corrida documentada acima, so que no caminho de "form
+        # vazio" (times sem partidas anteriores na API ainda).
+        await session.rollback()
+        winner = await _latest_form(session, team.id)
+        if winner is not None:
+            return winner
+        raise
     await session.refresh(form)
     return form

@@ -21,6 +21,7 @@ from app.schemas.prognostics import (
     AnomalyRowOut,
     GoalWindowOut,
     MomentumOut,
+    MomentumPointOut,
     NextGoalOut,
     PrognosticsOut,
     WinProbabilityOut,
@@ -35,6 +36,7 @@ from app.services.prognostics_service import (
     compute_anomaly_summary,
     compute_goal_window_probability,
     compute_momentum,
+    compute_momentum_series,
     compute_next_goal_probability,
     compute_remaining_goal_expectation,
     compute_win_probability,
@@ -225,6 +227,7 @@ async def get_prognostics(fixture_id: int, session: AsyncSession = Depends(get_s
     next_goal = compute_next_goal_probability(remaining_home, remaining_away)
     goal_windows = compute_goal_window_probability(remaining_home, remaining_away, minute)
     momentum = compute_momentum(snapshots)
+    momentum_series = compute_momentum_series(snapshots)
     anomalies = compute_anomaly_summary(latest, minute, home_form, away_form)
 
     return PrognosticsOut(
@@ -246,6 +249,7 @@ async def get_prognostics(fixture_id: int, session: AsyncSession = Depends(get_s
             home_trend=momentum.home_trend,
             away_trend=momentum.away_trend,
         ),
+        momentum_series=[MomentumPointOut(**p) for p in momentum_series],
         anomalies=[AnomalyRowOut(label=a.label, home_pct=a.home_pct, away_pct=a.away_pct) for a in anomalies],
     )
 

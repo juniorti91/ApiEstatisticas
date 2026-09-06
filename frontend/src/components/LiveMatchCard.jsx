@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Star } from "lucide-react";
+import MatchFlowChart from "./MatchFlowChart";
 
-const TABS = ["Visão Geral", "Estatísticas", "Odds", "Eventos", "Comparativo", "Histórico"];
+const TABS = ["Visão Geral", "Estatísticas", "Odds", "Eventos", "Relato", "Comparativo", "Histórico"];
 
 function TeamBadge({ name, color }) {
   const initial = name?.[0]?.toUpperCase() || "?";
@@ -15,7 +16,20 @@ function TeamBadge({ name, color }) {
   );
 }
 
-export default function LiveMatchCard({ match, activeTab, onTabChange, hideTabs = false }) {
+export default function LiveMatchCard({
+  match,
+  activeTab,
+  onTabChange,
+  hideTabs = false,
+  // "Fluxo da partida" e opt-in (nao aparece por padrao): as outras telas
+  // que reaproveitam esse card como cabecalho (LiveMatches, MatchData,
+  // MatchStats, Lineups, Prognosticos) nao pediram esse recurso - sem esse
+  // controle explicito, elas mostrariam so o aviso "aparece apos os
+  // primeiros minutos" a toa, ja que nunca passam flowSeries mesmo. So o
+  // Dashboard (onde o pedido foi feito) passa showFlow.
+  showFlow = false,
+  flowSeries = [],
+}) {
   if (!match) return null;
   const possessionHome = match.possessionHome ?? 50;
   const possessionAway = 100 - possessionHome;
@@ -68,6 +82,10 @@ export default function LiveMatchCard({ match, activeTab, onTabChange, hideTabs 
           <span className="text-xs sm:text-sm text-slate-200 text-center truncate w-full">{match.away_team?.name}</span>
         </div>
       </div>
+
+      {showFlow && (
+        <MatchFlowChart series={flowSeries} homeName={match.home_team?.name} awayName={match.away_team?.name} />
+      )}
 
       {!hideTabs && (
       <div className="flex items-center gap-4 sm:gap-6 border-t border-border mt-3 pt-3 text-sm overflow-x-auto whitespace-nowrap">

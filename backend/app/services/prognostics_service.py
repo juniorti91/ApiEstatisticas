@@ -294,6 +294,34 @@ def compute_momentum_score(
     return round(score * 100, 1)
 
 
+def compute_momentum_series(
+    snapshots: list[MatchSnapshot], window_minutes: int = MOMENTUM_WINDOW_MINUTES, step_minutes: int = 5
+) -> list[dict]:
+    """Serie de Momentum (home/away) ao longo da partida ate agora, um
+    ponto a cada `step_minutes` (mesmo ritmo do collector) - alimenta o
+    mini-grafico "Fluxo da partida" embutido no card do placar (ver
+    LiveMatchCard.jsx), pra dar uma nocao visual rapida de qual time vem
+    pressionando mais sem precisar abrir a aba de Prognosticos. Reusa a
+    MESMA janela nao-acumulativa de compute_momentum_score, so que
+    "congelada" em cada ponto do tempo em vez de so no minuto atual - nao
+    faz nenhuma chamada nova a API-Football, so reprocessa os snapshots
+    que ja foram coletados."""
+    if not snapshots:
+        return []
+
+    last_minute = snapshots[-1].minute
+    targets = list(range(step_minutes, last_minute, step_minutes))
+    if not targets or targets[-1] != last_minute:
+        targets.append(last_minute)  # garante que o ultimo ponto reflete o minuto mais recente
+
+    points: list[dict] = []
+    for minute in targets:
+        home = compute_momentum_score(snapshots, "home", minute, window_minutes)
+        away = compute_momentum_score(snapshots, "away", minute, window_minutes)
+        points.append({"minute": minute, "home": home or 0.0, "away": away or 0.0})
+    return points
+
+
 def _momentum_trend(delta: float | None) -> str:
     if delta is None:
         return "indisponivel"

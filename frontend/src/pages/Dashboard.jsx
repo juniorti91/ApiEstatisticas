@@ -6,6 +6,7 @@ import StatsComparisonPanel from "../components/StatsComparisonPanel";
 import PerformanceComparisonTable from "../components/PerformanceComparisonTable";
 import MatchInfoCard from "../components/MatchInfoCard";
 import MomentumTimeline from "../components/MomentumTimeline";
+import MatchReport from "../components/MatchReport";
 import EvolutionChart from "../components/EvolutionChart";
 import OddsMovementChart from "../components/OddsMovementChart";
 import MainRecommendationCard from "../components/MainRecommendationCard";
@@ -32,6 +33,10 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
   const [snapshots, setSnapshots] = useState([]);
   const [comparison, setComparison] = useState(null);
   const [events, setEvents] = useState([]);
+  // Serie do Indice de Momentum ao longo do jogo (ver prognostics_service.
+  // compute_momentum_series) - alimenta o mini-grafico "Fluxo da partida"
+  // embutido no card do placar (LiveMatchCard), visivel em todas as abas.
+  const [flowSeries, setFlowSeries] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [oddsHistory, setOddsHistory] = useState([]);
   const [history, setHistory] = useState([]);
@@ -127,11 +132,12 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
       setSnapshots([]);
       setComparison(null);
       setEvents([]);
+      setFlowSeries([]);
       setRecommendations([]);
       setOddsHistory([]);
       return;
     }
-    const [rawSnaps, rawComp, rawEvents, rawRecs] = await Promise.all([
+    const [rawSnaps, rawComp, rawEvents, rawRecs, rawPrognostics] = await Promise.all([
       ApiClient.getSnapshots(matchId).catch(() => []),
       ApiClient.getComparison(matchId).catch(() => null),
       // Eventos tem cache curto (60s) so enquanto a partida esta ao vivo -
@@ -140,12 +146,17 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
       // sem gerar chamada nova a API-Football a cada poll.
       ApiClient.getEvents(matchId).catch(() => ({ events: [] })),
       ApiClient.listFixtureRecommendations(matchId).catch(() => []),
+      // Prognosticos e so leitura dos snapshots ja salvos (nenhuma chamada
+      // nova a API-Football) - buscado aqui so pela momentum_series, que
+      // alimenta o mini-grafico "Fluxo da partida" no card do placar.
+      ApiClient.getPrognostics(matchId).catch(() => null),
     ]);
     const snaps = Array.isArray(rawSnaps) ? rawSnaps : [];
     const recs = Array.isArray(rawRecs) ? rawRecs : [];
     setSnapshots(snaps);
     setComparison(rawComp);
     setEvents(Array.isArray(rawEvents?.events) ? rawEvents.events : []);
+    setFlowSeries(Array.isArray(rawPrognostics?.momentum_series) ? rawPrognostics.momentum_series : []);
     setRecommendations(recs);
 
     const primary = recs.find((r) => r.is_primary) || recs[0];
@@ -281,7 +292,13 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
         {selectedMatch ? (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 space-y-5 min-w-0">
-              <LiveMatchCard match={matchForCard} activeTab={activeTab} onTabChange={setActiveTab} />
+              <LiveMatchCard
+                match={matchForCard}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                showFlow
+                flowSeries={flowSeries}
+              />
 
               {activeTab === "Visão Geral" && (
                 <div className="space-y-5">
@@ -304,6 +321,14 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
 
               {activeTab === "Eventos" && (
                 <MomentumTimeline
+                  events={events}
+                  homeName={selectedMatch.home_team.name}
+                  awayName={selectedMatch.away_team.name}
+                />
+              )}
+
+              {activeTab === "Relato" && (
+                <MatchReport
                   events={events}
                   homeName={selectedMatch.home_team.name}
                   awayName={selectedMatch.away_team.name}
