@@ -17,18 +17,21 @@ import {
 // Paginas de verdade, navegaveis (ver App.jsx). As demais entradas ainda
 // nao tem tela propria - ficam visiveis (proximos passos do produto) mas
 // sem acao ao clicar, em vez de sumir da barra lateral.
+//
+// Ordem ALFABETICA por label (pedido explicito do usuario) - ao adicionar
+// um item novo, insira na posicao alfabetica correta em vez de no final.
 const NAV_ITEMS = [
-  { label: "Dashboard", icon: LayoutDashboard, page: "dashboard" },
-  { label: "Partidas Ao Vivo", icon: Radio, page: "live" },
-  { label: "Dados do Jogo", icon: Database, page: "matchdata" },
-  { label: "Comparativo Detalhado", icon: BarChart3, page: "matchstats" },
-  { label: "Escalações", icon: Shirt, page: "lineups" },
-  { label: "Prognósticos", icon: Target, page: "prognostics" },
-  { label: "Recomendações", icon: Zap },
-  { label: "Histórico de Apostas", icon: ClipboardList },
   { label: "Análises", icon: LineChart },
-  { label: "Times", icon: Users, page: "teams" },
+  { label: "Comparativo Detalhado", icon: BarChart3, page: "matchstats" },
   { label: "Configurações", icon: Settings },
+  { label: "Dados do Jogo", icon: Database, page: "matchdata" },
+  { label: "Dashboard", icon: LayoutDashboard, page: "dashboard" },
+  { label: "Escalações", icon: Shirt, page: "lineups" },
+  { label: "Histórico de Apostas", icon: ClipboardList },
+  { label: "Partidas Ao Vivo", icon: Radio, page: "live" },
+  { label: "Prognósticos", icon: Target, page: "prognostics" },
+  { label: "Recomendações", icon: Zap, page: "recommendations" },
+  { label: "Times", icon: Users, page: "teams" },
 ];
 
 export default function Sidebar({

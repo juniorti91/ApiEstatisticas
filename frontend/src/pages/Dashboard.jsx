@@ -27,7 +27,7 @@ function formatClock(date) {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChange, onOpenSidebar }) {
+export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChange, onOpenSidebar, onNavigate }) {
   const [liveMatches, setLiveMatches] = useState([]);
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [snapshots, setSnapshots] = useState([]);
@@ -361,7 +361,10 @@ export default function Dashboard({ onlyValueBets, selectedLeague, onLeaguesChan
                 <OddsMovementChart history={oddsHistory} marketLabel={primaryRec?.selection} />
               </div>
 
-              <RecommendationHistoryTable rows={history} />
+              <RecommendationHistoryTable
+                rows={history}
+                onViewAll={onNavigate ? () => onNavigate("recommendations") : undefined}
+              />
             </div>
 
             <div className="space-y-5">

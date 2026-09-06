@@ -43,7 +43,7 @@ function formatDay(dateStr) {
   return { label: date.toLocaleDateString("pt-BR"), time };
 }
 
-export default function RecommendationHistoryTable({ rows }) {
+export default function RecommendationHistoryTable({ rows, onViewAll }) {
   const [page, setPage] = useState(1);
   // rows chega inteira (ate 50 linhas, ver Dashboard.jsx) e recarrega a
   // cada poll de 12s - se ela encolher (ex: filtro mudou) e a pagina atual
@@ -59,7 +59,17 @@ export default function RecommendationHistoryTable({ rows }) {
     <div className="bg-panel border border-border rounded-xl p-4 sm:p-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-medium text-slate-200">HISTÓRICO DE RECOMENDAÇÕES</span>
-        <button className="text-xs text-accent font-medium">VER TODAS</button>
+        {/* So aparece quando quem usa este componente passa onViewAll (ver
+            Dashboard.jsx) - leva pra pagina "Recomendações" dedicada, com o
+            historico completo (ate 200 linhas, contra as 50 mostradas aqui
+            no resumo do Dashboard). Na propria pagina de Recomendações essa
+            prop nao e passada, entao o botao some (nao faz sentido "ver
+            todas" de dentro da tela que ja mostra todas). */}
+        {onViewAll && (
+          <button onClick={onViewAll} className="text-xs text-accent font-medium hover:underline">
+            VER TODAS
+          </button>
+        )}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm min-w-[480px]">

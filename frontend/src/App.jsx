@@ -7,6 +7,7 @@ import MatchStats from "./pages/MatchStats";
 import TeamHistory from "./pages/TeamHistory";
 import Lineups from "./pages/Lineups";
 import Prognostics from "./pages/Prognostics";
+import Recommendations from "./pages/Recommendations";
 
 export default function App() {
   // Pagina atual - navegacao simples por estado (sem router: o app so tem
@@ -89,12 +90,15 @@ export default function App() {
           onLeaguesChange={handleLeaguesChange}
           onOpenSidebar={() => setSidebarOpen(true)}
         />
+      ) : currentPage === "recommendations" ? (
+        <Recommendations onOpenSidebar={() => setSidebarOpen(true)} />
       ) : (
         <Dashboard
           onlyValueBets={onlyValueBets}
           selectedLeague={selectedLeague}
           onLeaguesChange={handleLeaguesChange}
           onOpenSidebar={() => setSidebarOpen(true)}
+          onNavigate={setCurrentPage}
         />
       )}
     </div>
