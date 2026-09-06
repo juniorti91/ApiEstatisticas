@@ -106,7 +106,21 @@ class ApiFootballClient:
         )
 
     async def odds_for_fixture(self, fixture_id: int) -> list[dict]:
+        """Odds de PRE-JOGO (fixas, tiradas no apito inicial) - NAO USADO
+        mais pelo motor de recomendacao (ver live_odds abaixo), mantido
+        aqui por ser um wrapper generico do endpoint."""
         return await self._get("/odds", {"fixture": fixture_id})
+
+    async def live_odds(self) -> list[dict]:
+        """Odds AO VIVO de verdade (mudam durante a partida, com mercados
+        suspensos/reabertos em tempo real) de TODAS as partidas em
+        andamento agora - uma unica chamada cobre todo mundo, ao contrario
+        de odds_for_fixture (pre-jogo, uma chamada por partida). Por isso
+        e o que o motor de recomendacao usa (app/services/odds_service.py
+        e recommendation_engine.py) - e mais barato E mais realista que a
+        odd pre-jogo, que fica fixa desde o apito inicial e nunca reflete
+        o que esta acontecendo na partida."""
+        return await self._get("/odds/live")
 
 
 api_football_client = ApiFootballClient()

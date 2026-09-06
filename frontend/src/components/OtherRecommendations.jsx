@@ -2,6 +2,27 @@ import { useState } from "react";
 import { Flag, Star } from "lucide-react";
 import Modal from "./Modal";
 
+// Mesma logica do MainRecommendationCard: mostra se a odd exibida veio de
+// verdade do mercado ao vivo (/odds/live) ou e uma estimativa - null
+// (registro antigo, gravado antes dessa coluna existir) nao mostra nada.
+function OddSourceTag({ isLive }) {
+  if (isLive == null) return null;
+  return (
+    <span
+      className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+        isLive ? "bg-accentdim text-accent" : "bg-yellow-500/10 text-yellow-400"
+      }`}
+      title={
+        isLive
+          ? "Odd real, vinda do mercado ao vivo agora."
+          : "Sem cotação ao vivo disponível pra esse mercado agora - odd estimada a partir da probabilidade calculada."
+      }
+    >
+      {isLive ? "AO VIVO" : "ESTIMADA"}
+    </span>
+  );
+}
+
 function Stars({ count }) {
   return (
     <div className="flex gap-0.5">
@@ -28,7 +49,10 @@ function FullRecommendationCard({ r }) {
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center mb-3">
         <div>
-          <div className="text-[10px] text-muted mb-0.5">ODD</div>
+          <div className="text-[10px] text-muted mb-0.5 flex items-center justify-center gap-1">
+            ODD
+            <OddSourceTag isLive={r.odd_is_live} />
+          </div>
           <div className="text-sm font-semibold text-slate-100">{r.odd.toFixed(2)}</div>
         </div>
         <div>
@@ -82,7 +106,10 @@ export default function OtherRecommendations({ recommendations, allRecommendatio
               </span>
             </span>
             <span className="flex items-center gap-2 shrink-0">
-              <span className="text-slate-200">Odd: {r.odd.toFixed(2)}</span>
+              <span className="text-slate-200 flex items-center gap-1">
+                Odd: {r.odd.toFixed(2)}
+                <OddSourceTag isLive={r.odd_is_live} />
+              </span>
               <span
                 className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
                   r.confidence_stars >= 4

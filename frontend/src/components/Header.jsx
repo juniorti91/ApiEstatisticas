@@ -7,14 +7,29 @@ import { ApiClient } from "../api/client";
 // sem edicao pela tela) e exigem reiniciar o backend. Os valores aqui
 // vem do backend (GET /api/settings) so pra nao ficarem desatualizados
 // se alguem mudar o .env depois.
-function IntervalBadge({ label, minutes, title }) {
+//
+// `seconds`: quando informado, formata em segundos (arredondando pra
+// minutos so quando fizer sentido, ex: 90s -> "1min 30s") - usado pelo
+// badge de Odds, que agora roda em ODDS_REFRESH_INTERVAL_SECONDS. Quando
+// omitido, usa `minutes` direto (badge de Estatisticas).
+function formatInterval(minutes, seconds) {
+  if (seconds != null) {
+    if (seconds < 60) return `${seconds}s`;
+    const min = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return rest === 0 ? `${min} min` : `${min}min ${rest}s`;
+  }
+  return minutes != null ? `${minutes} min` : "…";
+}
+
+function IntervalBadge({ label, minutes, seconds, title }) {
   return (
     <span
       className="inline-flex items-center gap-1 text-[11px] text-accent bg-accentdim px-2 py-0.5 rounded-full"
       title={title}
     >
       <Clock size={11} />
-      {label} a cada {minutes ?? "…"} min
+      {label} a cada {formatInterval(minutes, seconds)}
     </span>
   );
 }
@@ -27,7 +42,7 @@ export default function Header({
   title = "DASHBOARD",
   subtitle = "Visão geral e recomendações em tempo real",
 }) {
-  const [oddsMinutes, setOddsMinutes] = useState(null);
+  const [oddsSeconds, setOddsSeconds] = useState(null);
   const [statsMinutes, setStatsMinutes] = useState(null);
 
   useEffect(() => {
@@ -35,7 +50,7 @@ export default function Header({
     ApiClient.getSettings()
       .then((data) => {
         if (cancelled) return;
-        setOddsMinutes(data.odds_refresh_interval_minutes);
+        setOddsSeconds(data.odds_refresh_interval_seconds);
         setStatsMinutes(data.collector_interval_minutes);
       })
       .catch(() => {
@@ -71,8 +86,8 @@ export default function Header({
             />
             <IntervalBadge
               label="Odds"
-              minutes={oddsMinutes}
-              title="As odds ao vivo e as recomendações são reconsultadas nesse intervalo em todas as telas (para mudar, edite ODDS_REFRESH_INTERVAL_MINUTES no .env e reinicie o backend)."
+              seconds={oddsSeconds}
+              title="As odds ao vivo (/odds/live) e as recomendações são reconsultadas nesse intervalo em todas as telas (para mudar, edite ODDS_REFRESH_INTERVAL_SECONDS no .env e reinicie o backend)."
             />
           </p>
         </div>

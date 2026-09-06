@@ -16,7 +16,7 @@ async def read_settings():
     reais em vigor, em vez de um texto fixo que pode ficar desatualizado
     se alguem mudar o .env depois."""
     return AppSettingsOut(
-        odds_refresh_interval_minutes=app_config.odds_refresh_interval_minutes,
+        odds_refresh_interval_seconds=app_config.odds_refresh_interval_seconds,
         collector_interval_minutes=app_config.collector_interval_minutes,
         live_scan_interval_minutes=app_config.live_scan_interval_minutes,
     )

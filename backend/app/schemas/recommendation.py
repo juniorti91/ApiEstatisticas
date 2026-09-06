@@ -11,6 +11,9 @@ class RecommendationOut(BaseModel):
     team_focus: str
     line: float
     odd: float
+    # None = registro antigo, gravado antes desta coluna existir (estado
+    # desconhecido) - ver comentario em app/models/recommendation.py.
+    odd_is_live: bool | None = None
     estimated_probability: float
     implied_probability: float
     expected_value: float

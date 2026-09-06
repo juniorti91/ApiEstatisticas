@@ -35,7 +35,7 @@ from app.models.recommendation import Recommendation, RecommendationStatus
 from app.models.snapshot import MatchSnapshot
 from app.models.team import Team
 from app.models.team_form import TeamForm
-from app.services.odds_service import fetch_raw_odds, find_odd, synthetic_fair_odd
+from app.services.odds_service import fetch_live_odds_by_fixture, find_live_odd, synthetic_fair_odd
 from app.services.team_form_service import get_or_refresh_team_form
 
 logger = logging.getLogger("betanalyzer.recommendation_engine")
@@ -88,6 +88,7 @@ async def _upsert_recommendation(
     odd_is_real: bool,
     justification: str,
     minute: int,
+    matched_market_name: str = "",
 ) -> Recommendation | None:
     implied = implied_probability(odd)
     edge = estimated_probability - implied
@@ -120,7 +121,16 @@ async def _upsert_recommendation(
     )
     rec = result.scalars().first()
 
-    odd_note = "odd ao vivo" if odd_is_real else "odd estimada (sem cotacao ao vivo disponivel)"
+    # Guarda o nome CRU do mercado ao vivo que gerou essa odd (quando real)
+    # direto na justificativa - assim, se uma odd parecer sem sentido de
+    # novo, da pra investigar direto no historico da recomendacao, sem
+    # precisar correr atras do payload ao vivo antes da partida acabar
+    # (foi exatamente essa corrida contra o tempo que perdemos com a odd
+    # de 23.00 do jogo Juventude x Atletico Goianiense).
+    if odd_is_real:
+        odd_note = f"odd ao vivo, mercado real: '{matched_market_name}'" if matched_market_name else "odd ao vivo"
+    else:
+        odd_note = "odd estimada (sem cotacao ao vivo disponivel)"
     full_justification = f"{justification} ({odd_note})."
 
     if rec is None:
@@ -135,6 +145,7 @@ async def _upsert_recommendation(
         session.add(rec)
 
     rec.odd = odd
+    rec.odd_is_live = odd_is_real
     rec.estimated_probability = round(estimated_probability, 4)
     rec.implied_probability = round(implied, 4)
     rec.expected_value = round(ev, 2)
@@ -159,7 +170,7 @@ async def _upsert_recommendation(
 
 async def _corner_market(
     session: AsyncSession, fixture: Fixture, snapshot: MatchSnapshot,
-    home: Team, away: Team, home_form: TeamForm, away_form: TeamForm, raw_odds: list[dict],
+    home: Team, away: Team, home_form: TeamForm, away_form: TeamForm, live_markets: list[dict],
 ) -> Recommendation | None:
     minute = max(snapshot.minute, 1)
 
@@ -180,8 +191,23 @@ async def _corner_market(
     lam = max(proj, 0.1)
     prob = poisson_prob_over(line, lam)
 
-    raw_odd = find_odd(raw_odds, ["corner"], [f"over {line}", f"+{line}", "over"])
-    odd = raw_odd if raw_odd else synthetic_fair_odd(prob)
+    found = find_live_odd(
+        live_markets, ["corner"], ["over"], target_line=line,
+        exclude_keywords=["1st half", "2nd half"],
+    )
+    matched_market_name = ""
+    if found is not None:
+        odd, real_line, matched_market_name = found
+        if real_line is not None and real_line != line:
+            # a odd ao vivo encontrada e de uma linha ligeiramente diferente
+            # da calculada (mas dentro do max_line_diff aceito) - usa a
+            # linha REAL pra nunca exibir texto e odd descolados um do outro.
+            line = real_line
+            prob = poisson_prob_over(line, lam)
+        odd_is_real = True
+    else:
+        odd = synthetic_fair_odd(prob)
+        odd_is_real = False
 
     opponent_form = away_form if team_side == "home" else home_form
     justification = (
@@ -193,13 +219,13 @@ async def _corner_market(
 
     return await _upsert_recommendation(
         session, fixture, "corners_over", f"Mais de {line} Escanteios", team.name,
-        line, prob, odd, raw_odd is not None, justification, minute,
+        line, prob, odd, odd_is_real, justification, minute, matched_market_name,
     )
 
 
 async def _total_goals_market(
     session: AsyncSession, fixture: Fixture, snapshot: MatchSnapshot,
-    home_form: TeamForm, away_form: TeamForm, raw_odds: list[dict],
+    home_form: TeamForm, away_form: TeamForm, live_markets: list[dict],
 ) -> Recommendation | None:
     minute = max(snapshot.minute, 1)
     current_goals = snapshot.goals_home + snapshot.goals_away
@@ -212,10 +238,30 @@ async def _total_goals_market(
     remaining_lambda = max(proj_total - current_goals, 0.05)
 
     line = 1.5 if current_goals <= 1 else current_goals + 0.5
-    prob = poisson_prob_over(max(line - current_goals, 0.1), remaining_lambda) if line > current_goals else 0.95
 
-    raw_odd = find_odd(raw_odds, ["goals over/under", "over/under", "total"], [f"over {line}"])
-    odd = raw_odd if raw_odd else synthetic_fair_odd(prob)
+    def _prob_for_line(target: float) -> float:
+        return poisson_prob_over(max(target - current_goals, 0.1), remaining_lambda) if target > current_goals else 0.95
+
+    prob = _prob_for_line(line)
+
+    found = find_live_odd(
+        live_markets, ["match goals", "over/under line", "total goals"], ["over"],
+        target_line=line, exclude_keywords=["1st half", "2nd half", "corner"],
+    )
+    matched_market_name = ""
+    if found is not None:
+        odd, real_line, matched_market_name = found
+        if real_line is not None and real_line != line:
+            # bug corrigido: antes usavamos a odd da linha real mais proxima
+            # mesmo quando ela era bem diferente da linha calculada (ex:
+            # texto "Mais de 3.5 Gols" com odd na verdade de uma linha tipo
+            # 8.5) - agora a linha exibida sempre e a mesma que gerou a odd.
+            line = real_line
+            prob = _prob_for_line(line)
+        odd_is_real = True
+    else:
+        odd = synthetic_fair_odd(prob)
+        odd_is_real = False
 
     justification = (
         f"Media combinada dos dois times projeta {hist_expected:.1f} gols por jogo; no ritmo atual "
@@ -224,13 +270,13 @@ async def _total_goals_market(
 
     return await _upsert_recommendation(
         session, fixture, "total_goals_over", f"Mais de {line} Gols", "",
-        line, prob, odd, raw_odd is not None, justification, minute,
+        line, prob, odd, odd_is_real, justification, minute, matched_market_name,
     )
 
 
 async def _btts_market(
     session: AsyncSession, fixture: Fixture, snapshot: MatchSnapshot,
-    home_form: TeamForm, away_form: TeamForm, raw_odds: list[dict],
+    home_form: TeamForm, away_form: TeamForm, live_markets: list[dict],
 ) -> Recommendation | None:
     minute = max(snapshot.minute, 1)
     already_scored_both = snapshot.goals_home > 0 and snapshot.goals_away > 0
@@ -243,8 +289,17 @@ async def _btts_market(
     prob_no = 1 - ((avg_btts / 100) * time_decay)
     prob_no = max(0.05, min(0.95, prob_no))
 
-    raw_odd = find_odd(raw_odds, ["both teams score", "btts"], ["no"])
-    odd = raw_odd if raw_odd else synthetic_fair_odd(prob_no)
+    found = find_live_odd(
+        live_markets, ["both teams to score", "btts"], ["no"],
+        exclude_keywords=["1st half", "2nd half"],
+    )
+    matched_market_name = ""
+    if found is not None:
+        odd, _real_line, matched_market_name = found
+        odd_is_real = True
+    else:
+        odd = synthetic_fair_odd(prob_no)
+        odd_is_real = False
 
     justification = (
         f"Media das ultimas partidas mostra ambos marcam em {avg_btts:.0f}% dos jogos dos dois times; "
@@ -253,11 +308,13 @@ async def _btts_market(
 
     return await _upsert_recommendation(
         session, fixture, "btts_no", "Ambos Marcam - Nao", "",
-        0, prob_no, odd, raw_odd is not None, justification, minute,
+        0, prob_no, odd, odd_is_real, justification, minute, matched_market_name,
     )
 
 
-async def generate_recommendations_for_fixture(session: AsyncSession, fixture: Fixture) -> list[Recommendation]:
+async def generate_recommendations_for_fixture(
+    session: AsyncSession, fixture: Fixture, live_markets: list[dict] | None = None,
+) -> list[Recommendation]:
     snapshot = await _latest_snapshot(session, fixture.id)
     if snapshot is None or snapshot.minute < MIN_MINUTE_TO_RECOMMEND:
         return []
@@ -266,12 +323,17 @@ async def generate_recommendations_for_fixture(session: AsyncSession, fixture: F
     away = await session.get(Team, fixture.away_team_id)
     home_form = await get_or_refresh_team_form(session, home)
     away_form = await get_or_refresh_team_form(session, away)
-    raw_odds = await fetch_raw_odds(fixture.api_fixture_id)
+    # live_markets vem pronto de generate_recommendations_for_all_live (1
+    # chamada de /odds/live pra TODAS as partidas ao vivo, nao 1 por
+    # partida) - so busca aqui de novo se chamado isoladamente (ex: futuro
+    # endpoint manual/teste).
+    if live_markets is None:
+        live_markets = (await fetch_live_odds_by_fixture()).get(fixture.api_fixture_id, [])
 
     candidates = [
-        await _corner_market(session, fixture, snapshot, home, away, home_form, away_form, raw_odds),
-        await _total_goals_market(session, fixture, snapshot, home_form, away_form, raw_odds),
-        await _btts_market(session, fixture, snapshot, home_form, away_form, raw_odds),
+        await _corner_market(session, fixture, snapshot, home, away, home_form, away_form, live_markets),
+        await _total_goals_market(session, fixture, snapshot, home_form, away_form, live_markets),
+        await _btts_market(session, fixture, snapshot, home_form, away_form, live_markets),
     ]
     recs = [r for r in candidates if r is not None]
 
@@ -294,8 +356,13 @@ async def generate_recommendations_for_all_live(session: AsyncSession) -> int:
         ))
     )
     fixtures = list(result.scalars().all())
+    # 1 UNICA chamada de API cobre as odds ao vivo de TODAS as partidas em
+    # andamento agora (ver odds_service.fetch_live_odds_by_fixture) - antes
+    # cada partida gastava sua propria chamada de /odds aqui.
+    live_odds_by_fixture = await fetch_live_odds_by_fixture()
     total = 0
     for fixture in fixtures:
-        recs = await generate_recommendations_for_fixture(session, fixture)
+        live_markets = live_odds_by_fixture.get(fixture.api_fixture_id, [])
+        recs = await generate_recommendations_for_fixture(session, fixture, live_markets)
         total += len(recs)
     return total

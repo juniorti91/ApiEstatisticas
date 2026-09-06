@@ -32,6 +32,15 @@ class Recommendation(Base):
     line: Mapped[float] = mapped_column(Float, default=0)
 
     odd: Mapped[float] = mapped_column(Float, default=0)
+    # True = odd real veio do /odds/live (mercado ao vivo de verdade);
+    # False = nenhum mercado ao vivo foi encontrado pra essa selecao nesse
+    # momento e a odd exibida e uma estimativa sintetica derivada da
+    # probabilidade calculada (ver odds_service.synthetic_fair_odd); None
+    # = registro criado antes dessa coluna existir, estado desconhecido.
+    # Existe pra o front poder avisar claramente "AO VIVO" vs "ESTIMADA"
+    # ao lado da odd, em vez de essa info ficar escondida so no texto da
+    # justificativa.
+    odd_is_live: Mapped[bool | None] = mapped_column(Integer, nullable=True, default=None)
     estimated_probability: Mapped[float] = mapped_column(Float)  # 0-1
     implied_probability: Mapped[float] = mapped_column(Float)  # 0-1
     expected_value: Mapped[float] = mapped_column(Float)  # em % (EV)

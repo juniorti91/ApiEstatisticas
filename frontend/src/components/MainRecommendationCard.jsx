@@ -1,5 +1,28 @@
 import { Flag, Star } from "lucide-react";
 
+// odd_is_live: true = veio de /odds/live (mercado ao vivo de verdade);
+// false = nenhum mercado ao vivo foi encontrado agora e a odd exibida e
+// uma estimativa (ver odds_service.synthetic_fair_odd no backend); null
+// (registro gravado antes dessa coluna existir) = nao mostra nada, em vez
+// de arriscar um rotulo errado.
+function OddSourceTag({ isLive }) {
+  if (isLive == null) return null;
+  return (
+    <span
+      className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+        isLive ? "bg-accentdim text-accent" : "bg-yellow-500/10 text-yellow-400"
+      }`}
+      title={
+        isLive
+          ? "Odd real, vinda do mercado ao vivo agora."
+          : "Sem cotação ao vivo disponível pra esse mercado agora - odd estimada a partir da probabilidade calculada."
+      }
+    >
+      {isLive ? "AO VIVO" : "ESTIMADA"}
+    </span>
+  );
+}
+
 function Stars({ count }) {
   return (
     <div className="flex justify-center gap-0.5">
@@ -44,7 +67,10 @@ export default function MainRecommendationCard({ recommendation }) {
 
       <div className="grid grid-cols-3 gap-3 text-center mb-4">
         <div>
-          <div className="text-[11px] text-muted mb-1">ODD ATUAL</div>
+          <div className="text-[11px] text-muted mb-1 flex items-center justify-center gap-1">
+            ODD ATUAL
+            <OddSourceTag isLive={r.odd_is_live} />
+          </div>
           <div className="text-lg font-semibold text-slate-100">{r.odd.toFixed(2)}</div>
         </div>
         <div>

@@ -98,11 +98,35 @@ async def _ensure_snapshot_columns(conn) -> None:
             await conn.exec_driver_sql(f"ALTER TABLE match_snapshots ADD COLUMN {column} {ddl_type}")
 
 
+# Coluna adicionada depois ao Recommendation (ver app/models/recommendation.py)
+# pra distinguir odd real (/odds/live) de odd estimada no front. Sem
+# DEFAULT de proposito: linhas gravadas antes dessa coluna existir viram
+# NULL (estado "desconhecido"), nunca um True/False inventado - e por
+# isso o schema (app/schemas/recommendation.py) aceita None explicitamente
+# em vez de um valor fixo (o mesmo tipo de bug de NULL vs Pydantic que ja
+# apareceu antes neste projeto com MatchSnapshot).
+_RECOMMENDATION_NEW_COLUMNS: dict[str, str] = {
+    "odd_is_live": "INTEGER",
+}
+
+
+async def _ensure_recommendation_columns(conn) -> None:
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    result = await conn.exec_driver_sql("PRAGMA table_info(recommendations)")
+    existing_columns = {row[1] for row in result.fetchall()}
+    for column, ddl_type in _RECOMMENDATION_NEW_COLUMNS.items():
+        if column not in existing_columns:
+            await conn.exec_driver_sql(f"ALTER TABLE recommendations ADD COLUMN {column} {ddl_type}")
+
+
 async def init_db() -> None:
     """Cria as tabelas caso ainda nao existam (idempotente)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_snapshot_columns(conn)
+        await _ensure_recommendation_columns(conn)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

@@ -122,6 +122,16 @@ async def scan_live_fixtures(session: AsyncSession) -> list[Fixture]:
     em observacao continuam sendo atualizadas normalmente ate terminarem,
     mesmo que o numero total passe do limite; o limite so impede que
     NOVAS partidas entrem quando ja estamos no teto.
+
+    Tambem "desmonitora" aqui qualquer partida que ficou marcada
+    is_monitored=True de uma liga que NAO esta mais em MONITORED_LEAGUE_IDS
+    (ex: entrou quando a lista estava vazia/sem filtro, ou a lista mudou
+    depois). Sem isso, partidas de ligas indesejadas ficavam presas
+    ocupando as vagas de max_monitored_fixtures ate terminarem sozinhas -
+    foi exatamente o que aconteceu quando MONITORED_LEAGUE_IDS foi
+    preenchido pela primeira vez: as 8 vagas ja estavam tomadas por
+    partidas de ligas que nunca foram pedidas, e nenhuma partida das ligas
+    novas conseguia entrar.
     """
     try:
         raw_fixtures = await api_football_client.live_fixtures(settings.monitored_league_id_list)
@@ -129,8 +139,31 @@ async def scan_live_fixtures(session: AsyncSession) -> list[Fixture]:
         logger.warning("Falha ao escanear partidas ao vivo: %s", exc)
         return []
 
-    result = await session.execute(select(Fixture).where(Fixture.is_monitored.is_(True)))
-    monitored_fixtures = list(result.scalars().all())
+    allowed_league_ids = set(settings.monitored_league_id_list)
+    if allowed_league_ids:
+        result = await session.execute(
+            select(Fixture, League.api_id)
+            .join(League, Fixture.league_id == League.id)
+            .where(Fixture.is_monitored.is_(True))
+        )
+        monitored_fixtures: list[Fixture] = []
+        unmonitored_count = 0
+        for fixture, league_api_id in result.all():
+            if league_api_id in allowed_league_ids:
+                monitored_fixtures.append(fixture)
+            else:
+                fixture.is_monitored = False
+                unmonitored_count += 1
+        if unmonitored_count:
+            logger.info(
+                "Scan: %d partida(s) de ligas fora de MONITORED_LEAGUE_IDS removida(s) "
+                "da observacao para liberar vaga.",
+                unmonitored_count,
+            )
+    else:
+        result = await session.execute(select(Fixture).where(Fixture.is_monitored.is_(True)))
+        monitored_fixtures = list(result.scalars().all())
+
     already_monitored_ids = {f.api_fixture_id for f in monitored_fixtures}
     still_live_ids = {raw["fixture"]["id"] for raw in raw_fixtures}
     max_fixtures = settings.max_monitored_fixtures
