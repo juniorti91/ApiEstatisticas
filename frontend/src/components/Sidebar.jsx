@@ -1,6 +1,8 @@
 import {
   LayoutDashboard,
   Radio,
+  Database,
+  BarChart3,
   Zap,
   ClipboardList,
   LineChart,
@@ -16,6 +18,8 @@ import {
 const NAV_ITEMS = [
   { label: "Dashboard", icon: LayoutDashboard, page: "dashboard" },
   { label: "Partidas Ao Vivo", icon: Radio, page: "live" },
+  { label: "Dados do Jogo", icon: Database, page: "matchdata" },
+  { label: "Comparativo Detalhado", icon: BarChart3, page: "matchstats" },
   { label: "Recomendações", icon: Zap },
   { label: "Histórico de Apostas", icon: ClipboardList },
   { label: "Análises", icon: LineChart },

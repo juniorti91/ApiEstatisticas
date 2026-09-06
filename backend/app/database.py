@@ -107,6 +107,10 @@ async def _ensure_snapshot_columns(conn) -> None:
 # apareceu antes neste projeto com MatchSnapshot).
 _RECOMMENDATION_NEW_COLUMNS: dict[str, str] = {
     "odd_is_live": "INTEGER",
+    # Igual ao odd_is_live acima: sem DEFAULT de proposito, linhas antigas
+    # viram NULL ("nunca soubemos") em vez de um horario inventado - ver
+    # comentario em app/models/recommendation.py.
+    "updated_at": "DATETIME",
 }
 
 

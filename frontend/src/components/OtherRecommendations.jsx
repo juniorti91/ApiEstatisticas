@@ -1,6 +1,55 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Flag, Star } from "lucide-react";
 import Modal from "./Modal";
+
+// Mesma logica do MainRecommendationCard (naive UTC do backend precisa de
+// "Z" explicito, senao o JS le como horario local e desalinha o calculo).
+function parseUtcTimestamp(isoLike) {
+  if (!isoLike) return null;
+  const hasTz = /[zZ]|[+-]\d\d:\d\d$/.test(isoLike);
+  const date = new Date(hasTz ? isoLike : `${isoLike}Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function UpdatedAgo({ updatedAt }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const date = parseUtcTimestamp(updatedAt);
+  if (!date) return null;
+
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  let relative;
+  if (seconds < 5) relative = "agora mesmo";
+  else if (seconds < 60) relative = `há ${seconds}s`;
+  else if (seconds < 3600) relative = `há ${Math.floor(seconds / 60)}min`;
+  else relative = `há ${Math.floor(seconds / 3600)}h`;
+
+  const clock = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return (
+    <div className="text-[9px] text-muted mt-0.5">
+      atualizado {relative} <span className="text-slate-400">({clock})</span>
+    </div>
+  );
+}
+
+// Quando essa recomendacao foi gerada PELA PRIMEIRA VEZ (created_at nunca
+// muda depois) junto com o minuto de jogo daquele momento - "que horas foi
+// feita essa entrada", diferente do UpdatedAgo (ultimo recalculo).
+function CreatedAt({ createdAt, minute }) {
+  const date = parseUtcTimestamp(createdAt);
+  if (!date) return null;
+  const clock = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return (
+    <div className="text-[9px] text-muted">
+      entrada às <span className="text-slate-400">{clock}</span>
+      {minute ? ` (aos ${minute}')` : ""}
+    </div>
+  );
+}
 
 // Mesma logica do MainRecommendationCard: mostra se a odd exibida veio de
 // verdade do mercado ao vivo (/odds/live) ou e uma estimativa - null
@@ -54,6 +103,8 @@ function FullRecommendationCard({ r }) {
             <OddSourceTag isLive={r.odd_is_live} />
           </div>
           <div className="text-sm font-semibold text-slate-100">{r.odd.toFixed(2)}</div>
+          <UpdatedAgo updatedAt={r.updated_at} />
+          <CreatedAt createdAt={r.created_at} minute={r.minute_recommended} />
         </div>
         <div>
           <div className="text-[10px] text-muted mb-0.5">PROB. EST.</div>

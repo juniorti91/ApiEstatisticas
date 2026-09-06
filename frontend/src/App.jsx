@@ -2,10 +2,12 @@ import { useCallback, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import LiveMatches from "./pages/LiveMatches";
+import MatchData from "./pages/MatchData";
+import MatchStats from "./pages/MatchStats";
 
 export default function App() {
   // Pagina atual - navegacao simples por estado (sem router: o app so tem
-  // duas telas reais por enquanto, uma lib de rotas seria exagero aqui).
+  // poucas telas reais por enquanto, uma lib de rotas seria exagero aqui).
   const [currentPage, setCurrentPage] = useState("dashboard");
   const [selectedLeague, setSelectedLeague] = useState("Todas");
   const [onlyValueBets, setOnlyValueBets] = useState(false);
@@ -50,6 +52,18 @@ export default function App() {
       />
       {currentPage === "live" ? (
         <LiveMatches
+          selectedLeague={selectedLeague}
+          onLeaguesChange={handleLeaguesChange}
+          onOpenSidebar={() => setSidebarOpen(true)}
+        />
+      ) : currentPage === "matchdata" ? (
+        <MatchData
+          selectedLeague={selectedLeague}
+          onLeaguesChange={handleLeaguesChange}
+          onOpenSidebar={() => setSidebarOpen(true)}
+        />
+      ) : currentPage === "matchstats" ? (
+        <MatchStats
           selectedLeague={selectedLeague}
           onLeaguesChange={handleLeaguesChange}
           onOpenSidebar={() => setSidebarOpen(true)}

@@ -22,6 +22,10 @@ class RecommendationOut(BaseModel):
     justification: str
     minute_recommended: int
     created_at: datetime
+    # None = registro antigo, gravado antes desta coluna existir, ou ainda
+    # nao recalculado desde que o backend subiu com ela - ver comentario
+    # em app/models/recommendation.py.
+    updated_at: datetime | None = None
     status: str
     settled_at: datetime | None
     final_stat_value: float | None

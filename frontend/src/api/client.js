@@ -12,6 +12,10 @@ export const ApiClient = {
   getSnapshots: (id) => api.get(`/api/matches/${id}/snapshots`).then((r) => r.data),
   getComparison: (id) => api.get(`/api/matches/${id}/comparison`).then((r) => r.data),
   getDetailedStats: (id) => api.get(`/api/matches/${id}/detailed-stats`).then((r) => r.data),
+  getStatComparison: (id, windowMinutes) =>
+    api
+      .get(`/api/matches/${id}/stat-comparison`, { params: windowMinutes ? { window: windowMinutes } : {} })
+      .then((r) => r.data),
   trackMatch: (apiFixtureId) => api.post(`/api/matches/track/${apiFixtureId}`).then((r) => r.data),
   addManualSnapshot: (id, payload) =>
     api.post(`/api/matches/${id}/snapshots/manual`, payload).then((r) => r.data),

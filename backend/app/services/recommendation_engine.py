@@ -17,6 +17,7 @@ o motor para de tocar naquela linha.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,21 +95,21 @@ async def _upsert_recommendation(
     edge = estimated_probability - implied
 
     if odd_is_real:
-        # So vale a pena mostrar quando ha vantagem real sobre a odd do mercado.
-        if edge < MIN_EDGE_TO_STORE:
-            return None
         stars = confidence_stars(estimated_probability, implied)
         value_bet = edge >= 0.03
+        # So vale a pena CRIAR uma recomendacao nova quando ha vantagem real
+        # sobre a odd do mercado - ver o "if rec is None" mais abaixo pra
+        # onde esse criterio de fato barra alguma coisa.
+        meets_bar_for_new = edge >= MIN_EDGE_TO_STORE
     else:
         # Sem cotacao real, a "odd justa" foi derivada da propria probabilidade
         # estimada (com margem de casa) - comparar edge contra ela seria
         # circular. Aqui o criterio passa a ser a propria probabilidade
         # estimada ser alta o suficiente para valer a pena exibir, e nunca
         # marcamos como value bet sem uma odd real para comparar.
-        if estimated_probability < MIN_PROBABILITY_WITHOUT_ODD:
-            return None
         stars = _confidence_from_probability(estimated_probability)
         value_bet = False
+        meets_bar_for_new = estimated_probability >= MIN_PROBABILITY_WITHOUT_ODD
 
     ev = expected_value_pct(estimated_probability, odd)
 
@@ -134,6 +135,10 @@ async def _upsert_recommendation(
     full_justification = f"{justification} ({odd_note})."
 
     if rec is None:
+        # So CRIA uma recomendacao nova quando ela atende o criterio minimo
+        # de qualidade - nao faz sentido comecar a mostrar algo fraco.
+        if not meets_bar_for_new:
+            return None
         rec = Recommendation(
             fixture_id=fixture.id,
             market=market,
@@ -143,9 +148,27 @@ async def _upsert_recommendation(
             minute_recommended=minute,
         )
         session.add(rec)
+    # BUG CORRIGIDO AQUI: uma recomendacao JA EXISTENTE (pendente, sendo
+    # exibida na tela agora) sempre e atualizada com o dado mais recente
+    # daqui pra baixo, mesmo quando o edge/probabilidade cai momentaneamente
+    # abaixo do minimo exigido pra CRIAR uma nova. Antes, esse "return None"
+    # acontecia ANTES de sequer buscar a linha existente no banco - ou seja,
+    # assim que a qualidade oscilava pra baixo (ex: probabilidade cai de
+    # 56% pra 54%), a funcao saia mais cedo sem tocar na recomendacao ja
+    # mostrada, deixando ela "congelada" com odd e horario velhos enquanto
+    # o motor continuava rodando por tras a cada ciclo sem nunca mais
+    # reavaliar aquela linha ate a probabilidade voltar a subir sozinha.
+    # Foi exatamente o sintoma relatado: "atualizado ha 3min" parado, com
+    # o jogo seguindo normalmente.
 
     rec.odd = odd
     rec.odd_is_live = odd_is_real
+    # Marca SEMPRE que o motor rodou pra essa recomendacao, mesmo quando o
+    # valor final sai identico ao ciclo anterior - e o que permite ao
+    # usuario ver na tela se ela realmente segue sendo recalculada a cada
+    # ciclo de odds (~60s) ou se travou com dado velho (ver comentario em
+    # app/models/recommendation.py).
+    rec.updated_at = datetime.utcnow()
     rec.estimated_probability = round(estimated_probability, 4)
     rec.implied_probability = round(implied, 4)
     rec.expected_value = round(ev, 2)
@@ -245,8 +268,21 @@ async def _total_goals_market(
     prob = _prob_for_line(line)
 
     found = find_live_odd(
-        live_markets, ["match goals", "over/under line", "total goals"], ["over"],
-        target_line=line, exclude_keywords=["1st half", "2nd half", "corner"],
+        live_markets,
+        # "over/under" sozinho (sem "line"/"goals" no meio) cobre o caso de
+        # a API-Football nomear o mercado so como "Over/Under" pra essa
+        # partida/liga especifica - os 3 keywords antigos exigiam que o
+        # nome batesse por inteiro com uma dessas frases mais especificas,
+        # e um "Over/Under" puro nao contem nenhuma delas (bug reportado:
+        # casa mostrava odd real 1.25 pra "Mais de 3.5" enquanto o app
+        # caia pro fallback sintetico 1.80 - suspeita principal e essa,
+        # ver log abaixo pra confirmar da proxima vez que acontecer).
+        # exclude_keywords ganhou "card"/"booking" junto porque "over/under"
+        # sozinho tambem bateria com mercados de cartoes tipo "Total Cards
+        # Over/Under", que nao tem nada a ver com gols.
+        ["match goals", "over/under line", "total goals", "over/under"],
+        ["over"],
+        target_line=line, exclude_keywords=["1st half", "2nd half", "corner", "card", "booking"],
     )
     matched_market_name = ""
     if found is not None:
@@ -262,6 +298,19 @@ async def _total_goals_market(
     else:
         odd = synthetic_fair_odd(prob)
         odd_is_real = False
+        if live_markets:
+            # A API devolveu odds ao vivo pra essa partida, mas nenhum
+            # mercado bateu com os keywords de gols acima - loga os nomes
+            # reais disponiveis pra dar pra investigar depois, sem precisar
+            # correr contra o relogio da partida (foi exatamente o que
+            # faltou no caso reportado: a partida acabou antes de dar pra
+            # capturar o payload ao vivo com o inspect_live_odds.py).
+            market_names = sorted({(m.get("name") or "").strip() for m in live_markets if m.get("name")})
+            logger.info(
+                "Total de gols: fixture %s tem odds ao vivo mas nenhum mercado bateu com os "
+                "keywords de gols (linha calculada=%.2f). Mercados disponiveis nessa partida: %s",
+                fixture.api_fixture_id, line, market_names,
+            )
 
     justification = (
         f"Media combinada dos dois times projeta {hist_expected:.1f} gols por jogo; no ritmo atual "

@@ -51,6 +51,17 @@ class Recommendation(Base):
 
     minute_recommended: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Diferente de created_at (so marca quando a linha nasceu e nunca muda
+    # depois): atualizada TODA VEZ que o motor de recomendacao roda pra
+    # essa partida/mercado (a cada ciclo de odds, ~60s), mesmo quando o
+    # valor final da odd/probabilidade acaba saindo identico ao anterior.
+    # Existe pra o usuario conseguir ver na tela se uma recomendacao
+    # realmente esta sendo recalculada ("atualizado as HH:MM:SS" andando
+    # pra frente a cada minuto) ou se ficou travada com dado velho - sem
+    # isso nao tinha como distinguir "recalculou e deu o mesmo valor" de
+    # "parou de recalcular". None = registro criado antes dessa coluna
+    # existir.
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
     status: Mapped[str] = mapped_column(String(10), default=RecommendationStatus.PENDING.value)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

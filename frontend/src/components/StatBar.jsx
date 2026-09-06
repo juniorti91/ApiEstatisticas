@@ -32,6 +32,13 @@ export const REFERENCE_MAX = {
   red_cards: 2,
   fouls: 25,
   offsides: 8,
+  // Adicionado junto com a tela "Comparativo Detalhado" (stat-comparison) -
+  // faltava aqui porque "Ataques Perigosos" nunca tinha sido exibido com
+  // StatRow antes; sem um teto proprio, cairia no DEFAULT_REFERENCE_MAX de
+  // 10 e qualquer partida normal (que costuma passar de 20-30 por time)
+  // deixaria a barra sempre 100% cheia dos dois lados, sem noção real de
+  // quem esta pressionando mais.
+  dangerous_attacks: 60,
   possession: 100,
   passes_total: 700,
   passes_accurate: 600,

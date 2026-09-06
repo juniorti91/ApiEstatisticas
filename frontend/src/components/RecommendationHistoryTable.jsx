@@ -1,6 +1,28 @@
+import { useState } from "react";
 import { Check, X, Minus } from "lucide-react";
 
 const STATUS_LABEL = { win: "Acertou", loss: "Errou", pending: "Pendente", void: "Anulada" };
+const PAGE_SIZE = 12;
+
+// Monta a lista de paginas a exibir tipo "1 2 3 ... 8": sempre mostra a
+// primeira, a ultima e uma janela em volta da pagina atual, resumindo o
+// resto num "..." pra nao lotar a tela quando tiver muita pagina no
+// historico.
+function buildPageList(current, total) {
+  const pages = [];
+  const WINDOW = 1;
+  let lastAdded = 0;
+  for (let p = 1; p <= total; p++) {
+    const isEdge = p === 1 || p === total;
+    const isNearCurrent = Math.abs(p - current) <= WINDOW;
+    if (isEdge || isNearCurrent) {
+      if (lastAdded && p - lastAdded > 1) pages.push("...");
+      pages.push(p);
+      lastAdded = p;
+    }
+  }
+  return pages;
+}
 
 function StatusIcon({ status }) {
   if (status === "win") return <Check size={16} className="text-accent" />;
@@ -22,6 +44,17 @@ function formatDay(dateStr) {
 }
 
 export default function RecommendationHistoryTable({ rows }) {
+  const [page, setPage] = useState(1);
+  // rows chega inteira (ate 50 linhas, ver Dashboard.jsx) e recarrega a
+  // cada poll de 12s - se ela encolher (ex: filtro mudou) e a pagina atual
+  // deixar de existir, volta pra ultima pagina valida em vez de mostrar
+  // uma pagina vazia.
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const pageRows = rows.slice(start, start + PAGE_SIZE);
+  const pageList = buildPageList(safePage, totalPages);
+
   return (
     <div className="bg-panel border border-border rounded-xl p-4 sm:p-5">
       <div className="flex items-center justify-between mb-3">
@@ -40,7 +73,7 @@ export default function RecommendationHistoryTable({ rows }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {rows.map((row) => {
+            {pageRows.map((row) => {
               const { label, time } = formatDay(row.played_on);
               return (
                 <tr key={row.id}>
@@ -71,6 +104,42 @@ export default function RecommendationHistoryTable({ rows }) {
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1.5 flex-wrap mt-4">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={safePage === 1}
+            className="text-xs font-medium px-3 py-1.5 rounded-md bg-panel2 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
+          >
+            « Anterior
+          </button>
+          {pageList.map((p, idx) =>
+            p === "..." ? (
+              <span key={`ellipsis-${idx}`} className="text-xs text-muted px-1">
+                ...
+              </span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                className={`text-xs font-medium w-7 h-7 rounded-md shrink-0 ${
+                  p === safePage ? "bg-accent text-panel" : "bg-panel2 text-slate-300 hover:brightness-110"
+                }`}
+              >
+                {p}
+              </button>
+            )
+          )}
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={safePage === totalPages}
+            className="text-xs font-medium px-3 py-1.5 rounded-md bg-panel2 text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
+          >
+            Próxima »
+          </button>
+        </div>
+      )}
     </div>
   );
 }

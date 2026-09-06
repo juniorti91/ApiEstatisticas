@@ -15,7 +15,9 @@ from app.schemas.comparison import ComparisonMetric, MatchComparison
 from app.schemas.detailed_stats import DetailedMatchStats, PlayerRatingOut, TeamDetailedStats
 from app.schemas.fixture import FixtureOut
 from app.schemas.snapshot import ManualSnapshotIn, MatchSnapshotOut
+from app.schemas.stat_comparison import StatComparisonOut, StatComparisonRow
 from app.services.collector import track_fixture_by_id
+from app.services.stat_window_service import build_stat_rows
 from app.services.team_form_service import get_or_refresh_team_form
 
 logger = logging.getLogger("betanalyzer.matches")
@@ -54,6 +56,34 @@ async def list_snapshots(fixture_id: int, session: AsyncSession = Depends(get_se
         select(MatchSnapshot).where(MatchSnapshot.fixture_id == fixture_id).order_by(MatchSnapshot.minute)
     )
     return result.scalars().all()
+
+
+@router.get("/{fixture_id}/stat-comparison", response_model=StatComparisonOut)
+async def get_stat_comparison(
+    fixture_id: int, window: int | None = None, session: AsyncSession = Depends(get_session)
+):
+    """Comparativo casa x fora com varias metricas, usado na tela
+    "Comparativo Detalhado" - so leitura dos snapshots ja salvos (sem
+    chamada nova a API-Football, igual detailed-stats acima). `window` em
+    minutos (5/10/15) recalcula so pra essa janela recente em vez do
+    acumulado do jogo todo - ver app/services/stat_window_service.py para
+    o raciocinio de como cada metrica e recalculada numa janela."""
+    fixture = await session.get(Fixture, fixture_id)
+    if fixture is None:
+        raise HTTPException(status_code=404, detail="Partida nao encontrada")
+
+    result = await session.execute(
+        select(MatchSnapshot).where(MatchSnapshot.fixture_id == fixture_id).order_by(MatchSnapshot.minute)
+    )
+    snapshots = list(result.scalars().all())
+
+    rows, from_minute, to_minute = build_stat_rows(snapshots, window)
+    return StatComparisonOut(
+        window_minutes=window,
+        from_minute=from_minute,
+        to_minute=to_minute,
+        rows=[StatComparisonRow(key=r.key, label=r.label, home=r.home, away=r.away) for r in rows],
+    )
 
 
 @router.post("/{fixture_id}/snapshots/manual", response_model=MatchSnapshotOut)

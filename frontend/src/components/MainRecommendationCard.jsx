@@ -1,4 +1,67 @@
+import { useEffect, useState } from "react";
 import { Flag, Star } from "lucide-react";
+
+// O backend manda updated_at como datetime "naive" em UTC (datetime.utcnow()
+// no Python), sem sufixo de fuso na string. Sem isso, o construtor Date()
+// do JS interpreta a string como horario LOCAL do navegador em vez de UTC,
+// o que desalinharia o calculo de "ha quantos segundos" pelo fuso do
+// usuario (ex: apareceria "ha 3h" pra algo que acabou de atualizar, no
+// fuso de Brasilia). Forca UTC explicitamente quando a string nao ja tem
+// um indicador de fuso.
+function parseUtcTimestamp(isoLike) {
+  if (!isoLike) return null;
+  const hasTz = /[zZ]|[+-]\d\d:\d\d$/.test(isoLike);
+  const date = new Date(hasTz ? isoLike : `${isoLike}Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// Mostra ha quanto tempo a recomendacao foi recalculada pela ultima vez
+// (rec.updated_at, atualizado a cada ciclo de odds mesmo quando o valor
+// final da odd sai igual ao anterior) - existe pra deixar visivel se uma
+// recomendacao realmente segue sendo recalculada ou se travou com dado
+// velho, sem precisar adivinhar. Reconta a cada segundo pra "ir andando"
+// na tela.
+function UpdatedAgo({ updatedAt }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const date = parseUtcTimestamp(updatedAt);
+  if (!date) return null;
+
+  const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+  let relative;
+  if (seconds < 5) relative = "agora mesmo";
+  else if (seconds < 60) relative = `há ${seconds}s`;
+  else if (seconds < 3600) relative = `há ${Math.floor(seconds / 60)}min`;
+  else relative = `há ${Math.floor(seconds / 3600)}h`;
+
+  const clock = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return (
+    <div className="text-[10px] text-muted mt-1">
+      atualizado {relative} <span className="text-slate-400">({clock})</span>
+    </div>
+  );
+}
+
+// Diferente do UpdatedAgo acima (que mostra o ultimo recalculo, que muda
+// a cada ciclo): mostra quando essa recomendacao foi gerada PELA PRIMEIRA
+// VEZ (rec.created_at, que nunca muda depois) junto com o minuto de jogo
+// daquele momento (rec.minute_recommended) - pra responder "que horas foi
+// feita essa entrada", nao "quando foi a ultima olhada nela".
+function CreatedAt({ createdAt, minute }) {
+  const date = parseUtcTimestamp(createdAt);
+  if (!date) return null;
+  const clock = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return (
+    <div className="text-[10px] text-muted">
+      entrada feita às <span className="text-slate-400">{clock}</span>
+      {minute ? ` (aos ${minute}')` : ""}
+    </div>
+  );
+}
 
 // odd_is_live: true = veio de /odds/live (mercado ao vivo de verdade);
 // false = nenhum mercado ao vivo foi encontrado agora e a odd exibida e
@@ -72,6 +135,8 @@ export default function MainRecommendationCard({ recommendation }) {
             <OddSourceTag isLive={r.odd_is_live} />
           </div>
           <div className="text-lg font-semibold text-slate-100">{r.odd.toFixed(2)}</div>
+          <UpdatedAgo updatedAt={r.updated_at} />
+          <CreatedAt createdAt={r.created_at} minute={r.minute_recommended} />
         </div>
         <div>
           <div className="text-[11px] text-muted mb-1">PROB. ESTIMADA</div>
